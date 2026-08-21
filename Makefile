@@ -1,7 +1,10 @@
-.PHONY: build test check run
+.PHONY: build install test check run
 
 build:
 	go build ./cmd/hrdx
+
+install:
+	go install ./cmd/hrdx
 
 test:
 	go test ./...
