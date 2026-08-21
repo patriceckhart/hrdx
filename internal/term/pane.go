@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,17 +29,19 @@ type SessionHost interface {
 // is either owned locally (pty/cmd) or lives in the session holder
 // (host/session), in which case output arrives via Feed.
 type Pane struct {
-	mu           sync.Mutex
-	vt           vt.Terminal
-	pty          pty.Pty
-	ptyCloseOnce sync.Once
-	cmd          *pty.Cmd
-	host         SessionHost
-	session      int64
-	updates      chan struct{}
-	exited       bool
-	kittyKeys    bool
-	scanTail     []byte
+	mu              sync.Mutex
+	vt              vt.Terminal
+	pty             pty.Pty
+	ptyCloseOnce    sync.Once
+	cmd             *pty.Cmd
+	host            SessionHost
+	session         int64
+	updates         chan struct{}
+	exited          bool
+	keyboardMode    [2]keyboardProtocolMode // shell and full-screen app views
+	keyboardAlt     bool
+	modifyOtherKeys bool // xterm fallback shared by both views
+	scanTail        []byte
 
 	// Foreground process caches. Mouse capture uses its own short-lived
 	// cache so an exited TUI cannot leave mouse reporting active in a shell.
@@ -254,22 +257,200 @@ func (p *Pane) writeOutput(data []byte) {
 	p.scrollOffset = min(limit, p.scrollOffset+int(after-before))
 }
 
-// scanKeyboardProtocol watches the output stream for kitty keyboard
-// protocol pushes and pops so the multiplexer knows whether this child
-// understands CSI-u key encodings. Called with p.mu held.
+// keyboardProtocolMode is the Kitty keyboard setting for one terminal view.
+// A pane has one view for its shell and another for full-screen apps, and Kitty
+// requires each view to keep its own small push/pop stack.
+type keyboardProtocolMode struct {
+	kittyFlags int
+	kittyStack []int
+}
+
+const (
+	kittyKeyboardStackLimit = 8
+	keyboardScanTailLimit   = 4096
+)
+
+// scanKeyboardProtocol follows keyboard-related escape sequences in pane
+// output. It uses a small streaming parser because a PTY can split a sequence
+// across reads. Called with p.mu held.
 func (p *Pane) scanKeyboardProtocol(chunk []byte) {
-	data := append(p.scanTail, chunk...)
-	if bytes.Contains(data, []byte("\x1b[>1u")) || bytes.Contains(data, []byte("\x1b[>4;2m")) {
-		p.kittyKeys = true
+	if len(chunk) == 0 && len(p.scanTail) == 0 {
+		return
 	}
-	if bytes.Contains(data, []byte("\x1b[<u")) {
-		p.kittyKeys = false
+	data := make([]byte, 0, len(p.scanTail)+len(chunk))
+	data = append(data, p.scanTail...)
+	data = append(data, chunk...)
+	p.scanTail = p.scanTail[:0]
+
+	for offset := 0; offset < len(data); {
+		if data[offset] != '\x1b' {
+			offset++
+			continue
+		}
+		start := offset
+		if offset+1 == len(data) {
+			p.keepKeyboardScanTail(data[start:])
+			return
+		}
+
+		switch data[offset+1] {
+		case 'c': // RIS: reset the terminal, including keyboard modes
+			p.resetKeyboardProtocol()
+			offset += 2
+		case '[':
+			final := offset + 2
+			for {
+				if final == len(data) {
+					p.keepKeyboardScanTail(data[start:])
+					return
+				}
+				char := data[final]
+				switch {
+				case char == '\x1b':
+					// ESC cancels an incomplete CSI and starts a new sequence.
+					offset = final
+				case char == 0x18 || char == 0x1a:
+					// CAN and SUB cancel an incomplete CSI.
+					offset = final + 1
+				case char >= 0x40 && char <= 0x7e:
+					p.applyKeyboardCSI(data[offset+2:final], char)
+					offset = final + 1
+				case char < 0x20 || char > 0x3f:
+					// Invalid CSI byte: discard this sequence and recover.
+					offset = final + 1
+				default:
+					final++
+					continue
+				}
+				break
+			}
+		case '\x1b':
+			// The second ESC starts a replacement sequence.
+			offset++
+		default:
+			offset += 2
+		}
 	}
-	// Keep a short tail so sequences split across reads are still seen.
-	if len(data) > 8 {
-		data = data[len(data)-8:]
+}
+
+func (p *Pane) keepKeyboardScanTail(data []byte) {
+	if len(data) <= keyboardScanTailLimit {
+		p.scanTail = append(p.scanTail, data...)
 	}
-	p.scanTail = append(p.scanTail[:0], data...)
+}
+
+func (p *Pane) resetKeyboardProtocol() {
+	p.keyboardMode = [2]keyboardProtocolMode{}
+	p.keyboardAlt = false
+	p.modifyOtherKeys = false
+}
+
+func parseKeyboardParams(body []byte) ([]int, bool) {
+	if len(body) == 0 {
+		return nil, true
+	}
+	fields := strings.Split(string(body), ";")
+	values := make([]int, len(fields))
+	for index, field := range fields {
+		if field == "" {
+			continue
+		}
+		value, err := strconv.Atoi(field)
+		if err != nil || value < 0 {
+			return nil, false
+		}
+		values[index] = value
+	}
+	return values, true
+}
+
+func (p *Pane) applyKeyboardCSI(body []byte, final byte) {
+	// These sequences switch between the shell view and the view used by
+	// full-screen apps. Kitty gives each view its own keyboard stack.
+	if (final == 'h' || final == 'l') && len(body) > 1 && body[0] == '?' {
+		for _, field := range strings.Split(string(body[1:]), ";") {
+			value, err := strconv.Atoi(field)
+			if err == nil && (value == 47 || value == 1047 || value == 1049) {
+				p.keyboardAlt = final == 'h'
+			}
+		}
+		return
+	}
+
+	mode := &p.keyboardMode[0]
+	if p.keyboardAlt {
+		mode = &p.keyboardMode[1]
+	}
+
+	if final == 'u' && len(body) > 0 {
+		marker := body[0]
+		if marker != '>' && marker != '=' && marker != '<' {
+			return // a key report or query, not a mode change
+		}
+		params, ok := parseKeyboardParams(body[1:])
+		if !ok {
+			return
+		}
+		value := 0
+		if len(params) > 0 {
+			value = params[0]
+		}
+		switch marker {
+		case '>': // save the current flags and use the requested flags
+			if len(mode.kittyStack) == kittyKeyboardStackLimit {
+				copy(mode.kittyStack, mode.kittyStack[1:])
+				mode.kittyStack = mode.kittyStack[:kittyKeyboardStackLimit-1]
+			}
+			mode.kittyStack = append(mode.kittyStack, mode.kittyFlags)
+			mode.kittyFlags = value
+		case '=': // replace, add, or remove selected flags
+			how := 1
+			if len(params) > 1 {
+				how = params[1]
+			}
+			switch how {
+			case 1:
+				mode.kittyFlags = value
+			case 2:
+				mode.kittyFlags |= value
+			case 3:
+				mode.kittyFlags &^= value
+			}
+		case '<': // restore one saved mode by default
+			count := value
+			if count == 0 {
+				count = 1
+			}
+			for range count {
+				if len(mode.kittyStack) == 0 {
+					mode.kittyFlags = 0
+					break
+				}
+				last := len(mode.kittyStack) - 1
+				mode.kittyFlags = mode.kittyStack[last]
+				mode.kittyStack = mode.kittyStack[:last]
+			}
+		}
+		return
+	}
+
+	// Xterm's fallback setting belongs to the whole terminal rather than one
+	// view. CSI > 4 ; 2 m enables it; CSI > 4 m disables it.
+	if final == 'm' && len(body) > 0 && body[0] == '>' {
+		fields := strings.Split(string(body[1:]), ";")
+		if fields[0] != "4" {
+			return
+		}
+		if len(fields) == 1 {
+			p.modifyOtherKeys = false
+			return
+		}
+		if len(fields) != 2 {
+			return
+		}
+		value, err := strconv.Atoi(fields[1])
+		p.modifyOtherKeys = err == nil && value == 2
+	}
 }
 
 // fgCacheTTL bounds how often ForegroundCommand does the ioctl + process
@@ -319,7 +500,11 @@ func (p *Pane) ForegroundCommand() string {
 func (p *Pane) KittyKeys() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.kittyKeys
+	index := 0
+	if p.keyboardAlt {
+		index = 1
+	}
+	return p.keyboardMode[index].kittyFlags != 0 || p.modifyOtherKeys
 }
 
 // HasSpinner reports whether the visible screen contains a braille spinner

@@ -252,6 +252,127 @@ func TestShellCommandNames(t *testing.T) {
 	}
 }
 
+func TestKittyKeyboardModeDoesNotLeakOutOfAltScreen(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+
+	// Full-screen children enable kitty keyboard reporting on the alternate
+	// screen. Its keyboard-mode stack is separate from the shell's main-screen
+	// stack, so leaving the alternate screen must restore the shell's mode even
+	// when the child exits without an explicit kitty pop sequence.
+	pane.Feed([]byte("\x1b[?1049h"))
+	pane.Feed([]byte("\x1b[>1u"))
+	if !pane.KittyKeys() {
+		t.Fatal("kitty keyboard mode was not detected on the alternate screen")
+	}
+
+	pane.Feed([]byte("\x1b[?1049l"))
+	if pane.KittyKeys() {
+		t.Fatal("kitty keyboard mode leaked from the exited child into the shell")
+	}
+}
+
+func TestKittyKeyboardModesFollowProtocolSemantics(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+
+	pane.Feed([]byte("\x1b[=3u"))
+	pane.Feed([]byte("\x1b[=1;3u")) // clear flag 1, leave flag 2 set
+	if got := pane.keyboardMode[0].kittyFlags; got != 2 {
+		t.Fatalf("flags after selective clear = %d, want 2", got)
+	}
+	pane.Feed([]byte("\x1b[=1;2u")) // add flag 1
+	if got := pane.keyboardMode[0].kittyFlags; got != 3 {
+		t.Fatalf("flags after selective set = %d, want 3", got)
+	}
+	pane.Feed([]byte("\x1b[=4;1u")) // replace all flags
+	if got := pane.keyboardMode[0].kittyFlags; got != 4 {
+		t.Fatalf("flags after replacement = %d, want 4", got)
+	}
+}
+
+func TestKittyKeyboardViewsKeepIndependentModes(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+	pane.Feed([]byte("\x1b[>1u"))
+	pane.Feed([]byte("\x1b[?1049h"))
+	if pane.KittyKeys() {
+		t.Fatal("shell keyboard mode leaked into the full-screen view")
+	}
+	pane.Feed([]byte("\x1b[>2u"))
+	pane.Feed([]byte("\x1b[?1049l"))
+	if !pane.KittyKeys() || pane.keyboardMode[0].kittyFlags != 1 {
+		t.Fatal("returning to the shell did not restore its keyboard mode")
+	}
+}
+
+func TestModifyOtherKeysIsSharedAcrossViews(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+	pane.Feed([]byte("\x1b[>4;2m"))
+	pane.Feed([]byte("\x1b[?1049h"))
+	if !pane.KittyKeys() {
+		t.Fatal("modifyOtherKeys was lost on entry to the full-screen view")
+	}
+	pane.Feed([]byte("\x1b[?1049l"))
+	if !pane.KittyKeys() {
+		t.Fatal("modifyOtherKeys was lost on return to the shell view")
+	}
+	pane.Feed([]byte("\x1b[>4m"))
+	if pane.KittyKeys() {
+		t.Fatal("modifyOtherKeys remained enabled after its reset")
+	}
+}
+
+func TestTerminalResetClearsKeyboardModes(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+	pane.Feed([]byte("\x1b[>1u\x1b[?1049h\x1b[>2u\x1b[>4;2m\x1bc"))
+	if pane.KittyKeys() || pane.keyboardAlt || pane.modifyOtherKeys {
+		t.Fatal("terminal reset left keyboard mode enabled")
+	}
+	for index, mode := range pane.keyboardMode {
+		if mode.kittyFlags != 0 || len(mode.kittyStack) != 0 {
+			t.Fatalf("terminal reset left view %d state: %+v", index, mode)
+		}
+	}
+}
+
+func TestKittyKeyboardStackIsBounded(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+	for value := 1; value <= kittyKeyboardStackLimit+5; value++ {
+		pane.Feed([]byte(fmt.Sprintf("\x1b[>%du", value)))
+	}
+	if got := len(pane.keyboardMode[0].kittyStack); got != kittyKeyboardStackLimit {
+		t.Fatalf("keyboard stack size = %d, want %d", got, kittyKeyboardStackLimit)
+	}
+	pane.Feed([]byte("\x1b[<999u"))
+	if pane.KittyKeys() || len(pane.keyboardMode[0].kittyStack) != 0 {
+		t.Fatal("oversized pop did not empty and reset the keyboard stack")
+	}
+}
+
+func TestKeyboardProtocolScannerRecoversAcrossReads(t *testing.T) {
+	pane := NewHolderPane(nil, 1, 40, 6)
+	pane.Feed(nil) // empty output must be harmless
+
+	for _, part := range []byte("\x1b[>1u") {
+		pane.Feed([]byte{part})
+	}
+	if !pane.KittyKeys() {
+		t.Fatal("split kitty sequence was not detected")
+	}
+
+	pane.Feed([]byte("\x1bc"))
+	pane.Feed([]byte("\x1b[>1\x1b[>1u"))
+	if !pane.KittyKeys() {
+		t.Fatal("scanner did not recover from an interrupted CSI sequence")
+	}
+
+	pane.Feed([]byte("\x1bc"))
+	long := "\x1b[" + strings.Repeat("1;", 80)
+	pane.Feed([]byte(long))
+	pane.Feed([]byte("1m\x1b[>1u"))
+	if !pane.KittyKeys() {
+		t.Fatal("scanner lost the sequence after a long split CSI")
+	}
+}
+
 func TestBracketedPasteMode(t *testing.T) {
 	script := "printf '\\033[?2004h'; sleep 5"
 	if runtime.GOOS == "windows" {
