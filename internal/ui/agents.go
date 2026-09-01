@@ -20,11 +20,12 @@ type agentSpec struct {
 	custom         bool     // registered from harness.json
 }
 
-// agentSpecs lists the supported agents in menu/cycle order
-// (alphabetical; custom harnesses append after the built-ins).
+// agentSpecs lists the supported agents in menu/cycle order. Custom harnesses
+// append after the built-ins.
 var agentSpecs = []agentSpec{
 	{kind: "codex", binary: "codex", resume: []string{"resume", "--last"}, resumeFirst: true},
 	{kind: "claude", binary: "claude", resume: []string{"--continue"}},
+	{kind: "copilot", binary: "copilot", resume: []string{"--continue"}},
 	{kind: "pi", binary: "pi", resume: []string{"--continue"}},
 	{kind: "zot", binary: "zot", resume: []string{"--continue"}},
 }

@@ -73,6 +73,7 @@ var spaceMenuItems = []menuItem{
 type Config struct {
 	DefaultAgent string            // agent kind used for new panes and splits
 	AgentBins    map[string]string // per-agent binary overrides
+	Resume       bool              // resume the latest session for new agent panes
 	ZotArgs      []string          // extra args passed to zot panes only
 	Shell        string
 	Version      string // current binary version for the update check
@@ -542,7 +543,10 @@ func (m *Model) newPane(target *space, kind string) *pane {
 			}
 		}
 	}
-	newPane := &pane{id: m.nextID, name: fmt.Sprintf("%s %d", kind, count), kind: kind}
+	newPane := &pane{
+		id: m.nextID, name: fmt.Sprintf("%s %d", kind, count), kind: kind,
+		resume: m.config.Resume && isAgentKind(kind),
+	}
 	m.nextID++
 	return newPane
 }

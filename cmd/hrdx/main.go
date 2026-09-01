@@ -139,10 +139,10 @@ func main() {
 
 	var cwd paths
 	var agent, provider, model, reasoning, shell, statePath string
-	var zotBin, piBin, claudeBin, codexBin string
+	var zotBin, piBin, claudeBin, codexBin, copilotBin string
 	var resume, fresh, apiOn, persistOn bool
 	flag.Var(&cwd, "cwd", "project directory to open as a workspace (repeatable)")
-	flag.StringVar(&agent, "agent", "zot", "default agent for new panes: zot, pi, claude, codex, or a custom harness kind")
+	flag.StringVar(&agent, "agent", "zot", "default agent for new panes: zot, pi, claude, codex, copilot, or a custom harness kind")
 	flag.StringVar(&provider, "provider", "", "zot provider (zot panes only)")
 	flag.StringVar(&model, "model", "", "zot model (zot panes only)")
 	flag.StringVar(&reasoning, "reasoning", "", "zot reasoning level (zot panes only)")
@@ -150,6 +150,7 @@ func main() {
 	flag.StringVar(&piBin, "pi-bin", "", "path to the pi binary")
 	flag.StringVar(&claudeBin, "claude-bin", "", "path to the claude binary")
 	flag.StringVar(&codexBin, "codex-bin", "", "path to the codex binary")
+	flag.StringVar(&copilotBin, "copilot-bin", "", "path to the GitHub Copilot CLI binary")
 	flag.StringVar(&shell, "shell", defaultShell(), "shell for shell panes")
 	flag.StringVar(&statePath, "state", state.DefaultPath(), "state file for workspace persistence (empty disables)")
 	flag.BoolVar(&resume, "continue", false, "resume each agent's latest session")
@@ -187,18 +188,16 @@ func main() {
 	if reasoning != "" {
 		zotArgs = append(zotArgs, "--reasoning", reasoning)
 	}
-	if resume {
-		zotArgs = append(zotArgs, "--continue")
-	}
-
 	config := ui.Config{
 		DefaultAgent: agent,
 		AgentBins: map[string]string{
-			"zot":    zotBin,
-			"pi":     piBin,
-			"claude": claudeBin,
-			"codex":  codexBin,
+			"zot":     zotBin,
+			"pi":      piBin,
+			"claude":  claudeBin,
+			"codex":   codexBin,
+			"copilot": copilotBin,
 		},
+		Resume:  resume,
 		ZotArgs: zotArgs,
 		Shell:   shell,
 		Version: resolvedVersion(),

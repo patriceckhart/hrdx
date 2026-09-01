@@ -14,7 +14,7 @@
 
 ## What is it?
 
-hrdx is a experimental, minimal and lightweight terminal multiplexer built for the agent era: your projects as workspaces in a sidebar, tabs per workspace, and real terminal panes running [Codex CLI](https://learn.chatgpt.com/docs/codex/cli), [Claude Code](https://code.claude.com/docs/en/quickstart), [pi](https://www.pi.dev), [zot](https://www.zot.sh) or plain shells side by side. Kick off an agent in one project, switch to the next, and let the sidebar spinners tell you who is still working.
+hrdx is a experimental, minimal and lightweight terminal multiplexer built for the agent era: your projects as workspaces in a sidebar, tabs per workspace, and real terminal panes running [Codex CLI](https://learn.chatgpt.com/docs/codex/cli), [Claude Code](https://code.claude.com/docs/en/quickstart), [GitHub Copilot CLI](https://github.com/github/copilot-cli), [pi](https://www.pi.dev), [zot](https://www.zot.sh) or plain shells side by side. Kick off an agent in one project, switch to the next, and let the sidebar spinners tell you who is still working.
 
 - **Real terminals, not wrappers.** Every pane is a genuine PTY session with a full terminal emulator behind it. Agent TUIs run exactly as they do standalone: streaming, slash commands, sessions, mouse support, all of it. Panes present a clean terminal identity so capability-sniffing TUIs pick rendering paths that work inside a multiplexer, and `HRDX=1` lets tools detect they run inside hrdx.
 - **Everything in view.** The sidebar shows one hierarchy of workspaces, Git branches, and panes, adding tab rows only when a workspace has multiple tabs. Every pane has a shared status circle: agents become animated braille spinners while working, and an unfocused agent turns orange when it finishes. Focusing the pane acknowledges it and restores green.
@@ -34,7 +34,7 @@ curl -fsSL https://www.hrdx.dev/install.sh | bash
 irm https://www.hrdx.dev/install.ps1 | iex
 ```
 
-macOS, Linux, or Windows (10 1809+ / 11, via [ConPTY](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)), plus at least one agent CLI on your PATH: `codex`, `claude`, `pi` or `zot`. Update on any supported platform with `hrdx update`.
+macOS, Linux, or Windows (10 1809+ / 11, via [ConPTY](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)), plus at least one agent CLI on your PATH: `codex`, `claude`, `copilot`, `pi` or `zot`. GitHub Copilot CLI requires an active Copilot subscription and can be installed with `npm install -g @github/copilot`, Homebrew, WinGet, or its official install script. Update hrdx on any supported platform with `hrdx update`.
 
 ## Run
 
@@ -54,12 +54,13 @@ hrdx --agent claude
 | Flag | Purpose |
 |---|---|
 | `--cwd PATH` | Open a project as a workspace, repeatable |
-| `--agent ID` | Default agent for new panes: `zot`, `pi`, `claude`, `codex` (default `zot`) |
+| `--agent ID` | Default agent for new panes: `zot`, `pi`, `claude`, `codex`, `copilot` (default `zot`) |
 | `--provider ID` | Pass a provider to every zot pane (zot only) |
 | `--model ID` | Pass a model to every zot pane (zot only) |
 | `--reasoning LEVEL` | Set the reasoning level (zot only) |
 | `--continue` | Resume each project's latest session |
 | `--codex-bin PATH` | Use a specific codex binary |
+| `--copilot-bin PATH` | Use a specific GitHub Copilot CLI binary |
 | `--claude-bin PATH` | Use a specific claude binary |
 | `--pi-bin PATH` | Use a specific pi binary |
 | `--zot-bin PATH` | Use a specific zot binary |

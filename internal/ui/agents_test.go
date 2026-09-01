@@ -8,7 +8,7 @@ import (
 )
 
 func TestAgentKinds(t *testing.T) {
-	for _, kind := range []string{"zot", "pi", "claude", "codex"} {
+	for _, kind := range []string{"zot", "pi", "claude", "codex", "copilot"} {
 		if !isAgentKind(kind) {
 			t.Fatalf("%s should be an agent kind", kind)
 		}
@@ -26,6 +26,9 @@ func TestBinaryForHonorsOverride(t *testing.T) {
 	if got := config.binaryFor("codex"); got != "codex" {
 		t.Fatalf("binaryFor = %q, want codex", got)
 	}
+	if got := (Config{AgentBins: map[string]string{"copilot": "/opt/copilot"}}).binaryFor("copilot"); got != "/opt/copilot" {
+		t.Fatalf("binaryFor = %q, want /opt/copilot", got)
+	}
 }
 
 func TestDefaultAgentUsedForNewPanes(t *testing.T) {
@@ -36,6 +39,16 @@ func TestDefaultAgentUsedForNewPanes(t *testing.T) {
 	}
 	if first.panes[0].name != "claude 1" {
 		t.Fatalf("pane name = %q, want claude 1", first.panes[0].name)
+	}
+}
+
+func TestContinueMarksNewAgentPanesForResume(t *testing.T) {
+	model := New(Config{Shell: "/bin/sh", DefaultAgent: "copilot", Resume: true}, []string{"/tmp/api"}, "", state.State{})
+	if target := model.spaces[0].tab().panes[0]; target.kind != "copilot" || !target.resume {
+		t.Fatalf("pane = %+v, want resumable copilot", target)
+	}
+	if target := model.addPane(model.spaces[0], "shell", true); target.resume {
+		t.Fatal("shell pane must not be marked resumable")
 	}
 }
 
@@ -75,6 +88,7 @@ func TestToggleAgentKeepsLastEnabled(t *testing.T) {
 	model.toggleAgent("pi")
 	model.toggleAgent("claude")
 	model.toggleAgent("codex")
+	model.toggleAgent("copilot")
 	if cmd := model.toggleAgent("zot"); cmd == nil {
 		t.Fatal("disabling the last agent should flash a status")
 	}
@@ -185,6 +199,7 @@ func TestRestoreKeepsAgentKinds(t *testing.T) {
 		Name: "api", CWD: "/tmp/api",
 		Tabs: []state.Tab{{Panes: []state.Pane{
 			{Kind: "codex", Name: "codex 1"},
+			{Kind: "copilot", Name: "copilot 1"},
 			{Kind: "pi", Name: "pi 1"},
 			{Kind: "mystery", Name: "x"},
 		}}},
@@ -194,10 +209,16 @@ func TestRestoreKeepsAgentKinds(t *testing.T) {
 	if panes[0].kind != "codex" || !panes[0].resume {
 		t.Fatalf("pane 0 = %+v, want resumable codex", panes[0])
 	}
-	if panes[1].kind != "pi" || !panes[1].resume {
-		t.Fatalf("pane 1 = %+v, want resumable pi", panes[1])
+	if panes[1].kind != "copilot" || !panes[1].resume {
+		t.Fatalf("pane 1 = %+v, want resumable copilot", panes[1])
 	}
-	if panes[2].kind != "shell" || panes[2].resume {
-		t.Fatalf("pane 2 = %+v, want non-resuming shell fallback", panes[2])
+	if spec := agentByKind("copilot"); len(spec.resume) != 1 || spec.resume[0] != "--continue" {
+		t.Fatalf("copilot resume = %v, want [--continue]", spec.resume)
+	}
+	if panes[2].kind != "pi" || !panes[2].resume {
+		t.Fatalf("pane 2 = %+v, want resumable pi", panes[2])
+	}
+	if panes[3].kind != "shell" || panes[3].resume {
+		t.Fatalf("pane 3 = %+v, want non-resuming shell fallback", panes[3])
 	}
 }
