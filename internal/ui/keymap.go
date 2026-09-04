@@ -25,6 +25,7 @@ var defaultPrefixKeys = map[string][]string{
 	"shell-right":    {"s", "%", "|"},
 	"shell-down":     {"S", "\"", "-"},
 	"workspace":      {"w"},
+	"worktree-add":   {},
 	"tab-new":        {"t"},
 	"tab-next":       {"n"},
 	"tab-prev":       {"p"},

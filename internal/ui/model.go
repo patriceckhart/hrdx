@@ -30,7 +30,7 @@ func contains(values []string, wanted string) bool {
 
 const (
 	sidebarWidth          = 26
-	collapsedSidebarWidth = 6
+	collapsedSidebarWidth = 12
 )
 
 type inputMode int
@@ -39,6 +39,7 @@ const (
 	modeTerminal inputMode = iota
 	modePrefix
 	modeNewSpace
+	modeCreateWorktree
 	modeRename
 	modeMenu
 	modeSettings
@@ -70,16 +71,19 @@ var spaceMenuItems = []menuItem{
 	{"Rename", "space-rename"},
 	{"Close", "space-close"},
 	{"New tab", "space-tab"},
+	{"Open worktree", "space-worktree"},
+	{"Create worktree...", "space-worktree-create"},
 }
 
 // Config carries the launch settings for agent panes.
 type Config struct {
-	DefaultAgent string            // agent kind used for new panes and splits
-	AgentBins    map[string]string // per-agent binary overrides
-	ZotArgs      []string          // extra args passed to zot panes only
-	Shell        string
-	Version      string // current binary version for the update check
-	CacheDir     string // directory for the update check cache
+	DefaultAgent      string            // agent kind used for new panes and splits
+	AgentBins         map[string]string // per-agent binary overrides
+	ZotArgs           []string          // extra args passed to zot panes only
+	Shell             string
+	Version           string // current binary version for the update check
+	CacheDir          string // directory for the update check cache
+	WorktreeCreateCmd string // command template using {name}, {path}, and {repo}
 }
 
 type floatPlacement struct {
@@ -155,22 +159,25 @@ type Model struct {
 	pickAction    string             // "space", "tab", "split-right", "split-down", "settings"
 	pickSpace     *space             // tab target for the picker
 	pickPath      string             // directory for a pending new workspace
+	worktreeSpace *space             // workspace whose repository receives a new worktree
+	worktreeAt    rect               // menu position used when starting the create prompt
 	renamePane    *pane
 	renameTab     *tab
 	renameSpace   *space
 	branches      map[string]branchInfo
-	disabled      map[string]bool // agent kinds switched off in settings
-	soundOn       bool            // play a sound when an agent finishes a turn
-	soundKind     string          // which sound: "ding" or a sounds.json entry
-	notifyOn      bool            // post a desktop notification on finish
-	themeName     string          // active bundled or user theme name
-	autoCopy      bool            // copy completed text selections to the clipboard
-	clipboardCopy func(string)    // process-local clipboard writer, replaceable in tests
-	wasBusy       map[int]bool    // pane id -> spinner seen, for finish notifications
-	soundSeq      map[int]uint64  // invalidates stale agent-finish confirmations
-	paneAttention map[int]bool    // completed while unfocused; cleared only by focus
-	settingsTab   int             // active tab of the settings window
-	settingsIndex int             // selected row of the settings window
+	gitCommon     map[string]string // cwd -> git common directory, discovered on add/restore
+	disabled      map[string]bool   // agent kinds switched off in settings
+	soundOn       bool              // play a sound when an agent finishes a turn
+	soundKind     string            // which sound: "ding" or a sounds.json entry
+	notifyOn      bool              // post a desktop notification on finish
+	themeName     string            // active bundled or user theme name
+	autoCopy      bool              // copy completed text selections to the clipboard
+	clipboardCopy func(string)      // process-local clipboard writer, replaceable in tests
+	wasBusy       map[int]bool      // pane id -> spinner seen, for finish notifications
+	soundSeq      map[int]uint64    // invalidates stale agent-finish confirmations
+	paneAttention map[int]bool      // completed while unfocused; cleared only by focus
+	settingsTab   int               // active tab of the settings window
+	settingsIndex int               // selected row of the settings window
 	completions   []string
 	completion    int
 	sideScroll    int
@@ -404,6 +411,17 @@ type paneStartedMsg struct {
 	err  error
 }
 
+type worktreeListMsg struct {
+	items []menuItem
+	err   error
+}
+
+type worktreeCreateMsg struct {
+	space *space
+	path  string
+	err   error
+}
+
 // New builds the model. Saved workspaces from statePath are restored first;
 // paths not already present are added on top. Pass statePath == "" to
 // disable persistence.
@@ -416,7 +434,17 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 	harnessProblem := ""
 	keymapOverrides := map[string]string{}
 	if statePath != "" {
-		harnessProblem = loadHarnesses(filepath.Dir(statePath))
+		configFile, worktreeProblem := loadWorktreeConfig(filepath.Dir(statePath))
+		if config.WorktreeCreateCmd == "" {
+			config.WorktreeCreateCmd = configFile.Create
+		}
+		harnessProblem = worktreeProblem
+		if problem := loadHarnesses(filepath.Dir(statePath)); problem != "" {
+			if harnessProblem != "" {
+				harnessProblem += "; "
+			}
+			harnessProblem += problem
+		}
 		overrides, keymapProblem := loadKeymap(filepath.Dir(statePath))
 		keymapOverrides = overrides
 		if keymapProblem != "" {
@@ -434,13 +462,13 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 	input.Prompt = ""
 
 	model := Model{config: config, input: input, nextID: 1, statePath: statePath,
-		branches: map[string]branchInfo{}, disabled: map[string]bool{},
+		branches: map[string]branchInfo{}, gitCommon: map[string]string{}, disabled: map[string]bool{},
 		wasBusy: map[int]bool{}, soundSeq: map[int]uint64{}, paneAttention: map[int]bool{},
 		soundOn: saved.Sound, status: harnessProblem,
 		soundKind: saved.SoundKind, notifyOn: saved.Notify, themeName: saved.Theme,
-		sideCollapsed: saved.SidebarCollapsed,
 		autoCopy: !saved.DisableAutoCopy, clipboardCopy: copyToClipboard,
-		prefixKeys: buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
+		sideCollapsed: saved.SidebarCollapsed,
+		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
 	model.prefixTrigger = model.primaryKey("prefix")
 	if statePath != "" {
 		for _, problem := range []string{
@@ -487,6 +515,9 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 			model.addSpace(path)
 		}
 	}
+	for _, currentSpace := range model.spaces {
+		model.cacheGitCommon(currentSpace.cwd)
+	}
 	return model
 }
 
@@ -494,7 +525,17 @@ func (m *Model) addSpace(path string) *space {
 	return m.addSpaceKind(path, m.config.DefaultAgent)
 }
 
+func (m *Model) cacheGitCommon(path string) {
+	if m.gitCommon == nil {
+		m.gitCommon = make(map[string]string)
+	}
+	if common, ok := gitCommonDir(path); ok {
+		m.gitCommon[workspacePathKey(path)] = common
+	}
+}
+
 func (m *Model) addSpaceKind(path, kind string) *space {
+	m.cacheGitCommon(path)
 	newSpace := &space{name: filepath.Base(path), cwd: path, tabs: []*tab{{}}}
 	m.spaces = append(m.spaces, newSpace)
 	m.addPane(newSpace, kind, true)
@@ -713,8 +754,7 @@ func holderSessionMatchesWorkspace(sessions []holder.SessionInfo, session int64,
 	return false
 }
 
-// sidebarContentWidth is the styled content width of the left sidebar. The
-// rendered right border consumes one more screen column.
+// sidebarContentWidth is the width before the sidebar's right border.
 func (m Model) sidebarContentWidth() int {
 	if m.sideCollapsed {
 		return collapsedSidebarWidth
@@ -804,6 +844,42 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateInfoMsg:
 		m.updateInfo = msg.info
+		return m, nil
+
+	case worktreeCreateMsg:
+		if m.mode != modeCreateWorktree || msg.space != m.worktreeSpace {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.status = ""
+			return m, m.flashStatus("create worktree: " + msg.err.Error())
+		}
+		m.mode = modeTerminal
+		m.worktreeSpace = nil
+		m.status = ""
+		m.statusIsInfo = false
+		m.input.Blur()
+		m.input.SetValue("")
+		m.clearCompletions()
+		newSpace := m.addSpace(msg.path)
+		m.selected = len(m.spaces) - 1
+		m.persist()
+		return m, m.startPane(newSpace, newSpace.tab().panes[0])
+
+	case worktreeListMsg:
+		if m.pickAction != "worktree" {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.closeMenu()
+			return m, m.flashStatus("list worktrees: " + msg.err.Error())
+		}
+		m.pickItems = msg.items
+		if len(msg.items) == 0 {
+			m.closeMenu()
+			return m, m.flashInfo("no unopened worktrees")
+		}
+		m.openMenuBox(m.menuAt)
 		return m, nil
 
 	case tea.FocusMsg:
@@ -1039,6 +1115,42 @@ func keyFromBytes(legacy []byte, code rune, mods int) tea.KeyMsg {
 
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
+	case modeCreateWorktree:
+		switch msg.String() {
+		case "esc":
+			m.mode = modeTerminal
+			m.worktreeSpace = nil
+			m.clearCompletions()
+			m.input.Blur()
+			return m, nil
+		case "tab", "shift+tab":
+			delta := 1
+			if msg.String() == "shift+tab" {
+				delta = -1
+			}
+			m.advanceCompletion(delta)
+			return m, nil
+		case "enter":
+			target := m.worktreeSpace
+			if target == nil {
+				m.mode = modeTerminal
+				m.input.Blur()
+				return m, nil
+			}
+			path, err := resolveWorktreePath(target.cwd, strings.TrimSpace(m.input.Value()))
+			if err != nil {
+				return m, m.flashStatus(err.Error())
+			}
+			m.input.Blur()
+			m.status = "creating worktree..."
+			m.statusIsInfo = true
+			return m, createWorktreeCommand(target.cwd, path, target, m.config.WorktreeCreateCmd, m.config.Shell)
+		}
+		m.clearCompletions()
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+
 	case modeRename:
 		switch msg.String() {
 		case "esc":
@@ -1229,6 +1341,8 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.splitCurrent("shell", false)
 	case "workspace":
 		return m.openNewSpaceInput()
+	case "worktree-add":
+		return m.openWorktreePicker(m.currentSpace(), rect{x: 1, y: 1})
 	case "tab-new":
 		if currentSpace := m.currentSpace(); currentSpace != nil {
 			m.openKindPicker("tab", currentSpace, "", rect{x: m.sidebarContentWidth() + 2, y: 1})
@@ -1466,6 +1580,7 @@ func (m *Model) closeMenu() {
 	m.pickAction = ""
 	m.pickSpace = nil
 	m.pickPath = ""
+	m.worktreeSpace = nil
 }
 
 // toggleAgent flips one agent kind in settings. The last enabled agent
@@ -1499,6 +1614,40 @@ func (m *Model) toggleAgent(kind string) tea.Cmd {
 
 // openKindPicker shows a menu with the installed agents plus shell. The
 // chosen kind feeds the pending action: new workspace, new tab, or split.
+func (m *Model) openCreateWorktreeInput(target *space, at rect) (tea.Model, tea.Cmd) {
+	if target == nil {
+		return *m, nil
+	}
+	m.mode = modeCreateWorktree
+	m.worktreeSpace = target
+	m.worktreeAt = at
+	m.input.Placeholder = "worktree name (created under .worktrees)"
+	m.input.SetValue("")
+	m.clearCompletions()
+	m.input.Focus()
+	return *m, textinput.Blink
+}
+
+func (m *Model) openWorktreePicker(target *space, at rect) (tea.Model, tea.Cmd) {
+	if target == nil {
+		return *m, nil
+	}
+	m.mode = modeMenu
+	m.menuPane = nil
+	m.menuTab = nil
+	m.menuSpace = nil
+	m.pickItems = []menuItem{{"loading worktrees...", "worktree-loading"}}
+	m.pickAction = "worktree"
+	m.pickSpace = target
+	m.pickPath = ""
+	m.openMenuBox(at)
+	cwd := target.cwd
+	return *m, func() tea.Msg {
+		items, err := listWorktreeItems(cwd, m.spaces)
+		return worktreeListMsg{items: items, err: err}
+	}
+}
+
 func (m *Model) openKindPicker(action string, target *space, path string, at rect) {
 	var items []menuItem
 	for _, kind := range m.availableAgents() {
@@ -1528,6 +1677,14 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 	action, target, path := m.pickAction, m.pickSpace, m.pickPath
 	m.closeMenu()
 	switch action {
+	case "worktree":
+		if path == "" {
+			return m, nil
+		}
+		newSpace := m.addSpace(path)
+		m.selected = len(m.spaces) - 1
+		m.persist()
+		return m, m.startPane(newSpace, newSpace.tab().panes[0])
 	case "space":
 		newSpace := m.addSpaceKind(path, kind)
 		m.selected = len(m.spaces) - 1
@@ -1565,6 +1722,10 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 	if kind, ok := strings.CutPrefix(action, "kind:"); ok {
 		return m.runKindPick(kind)
 	}
+	if path, ok := strings.CutPrefix(action, "worktree:"); ok {
+		m.pickPath = path
+		return m.runKindPick("")
+	}
 	targetPane := m.menuPane
 	targetTab := m.menuTab
 	targetSpace := m.menuSpace
@@ -1589,6 +1750,10 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.closeCurrentSpace()
 		case "space-tab":
 			m.openKindPicker("tab", targetSpace, "", at)
+		case "space-worktree":
+			return m.openWorktreePicker(targetSpace, at)
+		case "space-worktree-create":
+			return m.openCreateWorktreeInput(targetSpace, at)
 		}
 		return m, nil
 	}
@@ -1725,7 +1890,7 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.dragSpace != nil {
 		switch msg.Action {
 		case tea.MouseActionMotion:
-			if msg.X > sidebarContentWidth || m.sideCollapsed {
+			if msg.X > sidebarContentWidth {
 				return m, nil
 			}
 			hit := m.sidebarHit(msg.Y - 1)
@@ -1917,9 +2082,6 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Right-click anywhere in a workspace hierarchy opens the workspace
 	// context menu next to the cursor.
 	if msg.Button == tea.MouseButtonRight && msg.Action == tea.MouseActionPress {
-		if m.sideCollapsed {
-			return m, nil
-		}
 		hit := m.sidebarHit(msg.Y - 1)
 		descendant := hit.kind == "space" || hit.kind == "tab" || hit.kind == "pane"
 		if descendant && hit.space >= 0 && hit.space < len(m.spaces) {
@@ -1934,7 +2096,7 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// The sidebar starts at body row 0 (screen row 1).
-	if m.sidebarToggleHit(msg.X, msg.Y-1) {
+	if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress && m.sidebarToggleHit(msg.X, msg.Y-1) {
 		m.toggleSidebar()
 		return m, nil
 	}
@@ -1944,13 +2106,10 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if hit.space >= 0 && hit.space < len(m.spaces) {
 			m.selected = hit.space
 			m.clearFocusedAttention()
-			m.persist()
-			if !m.sideCollapsed {
-				// Arm a reorder drag; a plain click releases without motion
-				// and leaves the order untouched.
-				m.dragSpace = m.spaces[hit.space]
-				m.dragMoved = false
-			}
+			// Arm a reorder drag; a plain click releases without motion
+			// and leaves the order untouched.
+			m.dragSpace = m.spaces[hit.space]
+			m.dragMoved = false
 		}
 	case "tab":
 		if hit.space >= 0 && hit.space < len(m.spaces) {
@@ -2135,196 +2294,34 @@ func sidebarPaneState(currentPane *pane) string {
 	}
 }
 
-func (m Model) sidebarRows() []sidebarRow {
-	if m.sideCollapsed {
-		return m.collapsedSidebarRows()
+func compactSidebarName(value string, width int) string {
+	value = strings.ReplaceAll(value, "\n", " ")
+	if runewidth.StringWidth(value) <= width {
+		return value
 	}
-	rows := []sidebarRow{
-		{},
-		{label: m.sidebarHeaderRow()},
-		{},
-	}
-
-	// Reserve one shared tab-label column whenever any workspace has tabs.
-	// This keeps every pane icon aligned, including panes in workspaces that
-	// only have one tab. Named tabs widen the shared column for all rows.
-	tabNameWidth := 0
-	for _, currentSpace := range m.spaces {
-		if len(currentSpace.tabs) <= 1 {
-			continue
-		}
-		for tabIndex, currentTab := range currentSpace.tabs {
-			name := truncate(tabDisplayName(currentTab, tabIndex), 6)
-			tabNameWidth = max(tabNameWidth, lipgloss.Width(name))
-		}
-	}
-
-	for spaceIndex, currentSpace := range m.spaces {
-		if spaceIndex > 0 {
-			rows = append(rows, sidebarRow{
-				label: " " + styleDivider.Render(strings.Repeat("─", sidebarWidth-2)),
-				kind:  "divider", space: spaceIndex, tab: -1, pane: -1,
-			})
-		}
-		rail := " "
-		if spaceIndex == m.selected {
-			rail = styleSpaceSel.Render("▍")
-		}
-		label := rail + styleSpaceDim.Render(truncate(currentSpace.name, sidebarWidth-3))
-		rows = append(rows, sidebarRow{
-			label: label,
-			kind:  "space", space: spaceIndex, tab: -1, pane: -1,
-		})
-		if branch := m.gitBranch(currentSpace.cwd); branch.value != "" {
-			suffixWidth := 0
-			suffix := ""
-			if branch.ahead > 0 {
-				text := fmt.Sprintf(" ↑%d", branch.ahead)
-				suffix += styleDotOn.Render(text)
-				suffixWidth += lipgloss.Width(text)
-			}
-			if branch.behind > 0 {
-				text := fmt.Sprintf(" ↓%d", branch.behind)
-				suffix += lipgloss.NewStyle().Foreground(colorAlt).Render(text)
-				suffixWidth += lipgloss.Width(text)
-			}
-			branchStyle := stylePaneDim
-			if spaceIndex == m.selected {
-				branchStyle = styleSpaceSel
-			}
-			rows = append(rows, sidebarRow{
-				label: rail + branchStyle.Render(truncate(branch.value, sidebarWidth-3-suffixWidth)) + suffix,
-				kind:  "space", space: spaceIndex, tab: -1, pane: -1,
-			})
-		}
-
-		showTabs := len(currentSpace.tabs) > 1
-		for tabIndex, currentTab := range currentSpace.tabs {
-			paneIndent := rail + "  "
-			paneNameWidth := sidebarWidth - 6
-			if tabNameWidth > 0 {
-				paneIndent = rail + strings.Repeat(" ", tabNameWidth+3)
-				paneNameWidth = sidebarWidth - tabNameWidth - 7
-			}
-
-			shownPanes := 0
-			for paneIndex, currentPane := range currentTab.panes {
-				if currentPane.floating != nil {
-					continue
-				}
-				rowIndent := paneIndent
-				if showTabs && shownPanes == 0 {
-					tabStyle := stylePaneDim
-					tabMarker := "  "
-					if spaceIndex == m.selected && tabIndex == currentSpace.active {
-						tabStyle = styleSpaceSel
-						tabMarker = styleSpaceSel.Render("▸") + " "
-					}
-					tabName := truncate(tabDisplayName(currentTab, tabIndex), 6)
-					tabPadding := strings.Repeat(" ", tabNameWidth-lipgloss.Width(tabName))
-					rowIndent = rail + tabMarker + tabStyle.Render(tabName) + tabPadding + " "
-				}
-				selected := spaceIndex == m.selected &&
-					tabIndex == currentSpace.active &&
-					paneIndex == currentTab.selected
-				state := sidebarPaneState(currentPane)
-				stateWidth := lipgloss.Width(state)
-				if state != "" {
-					state = " " + state
-					stateWidth++
-				}
-				name := truncate(m.paneDisplayName(currentPane), paneNameWidth-stateWidth)
-				nameStyle := stylePaneDim
-				if currentPane.running {
-					nameStyle = stylePaneRun
-				}
-				if selected {
-					nameStyle = stylePaneSel
-				}
-				nameLabel := nameStyle.Render(name)
-				rows = append(rows, sidebarRow{
-					label: rowIndent + m.sidebarPaneIcon(currentPane) + nameLabel + state,
-					kind:  "pane", space: spaceIndex, tab: tabIndex, pane: paneIndex,
-				})
-				shownPanes++
-			}
-		}
-	}
-
-	rows = append(rows,
-		sidebarRow{},
-		sidebarRow{label: " " + styleNewButton.Render("+  new workspace"), kind: "new", space: -1, tab: -1, pane: -1},
-	)
-	return rows
-}
-
-func (m Model) collapsedSidebarRows() []sidebarRow {
-	rows := []sidebarRow{{}, {label: m.sidebarHeaderRow()}}
-	for spaceIndex, currentSpace := range m.spaces {
-		rail := " "
-		if spaceIndex == m.selected {
-			rail = styleSpaceSel.Render("▍")
-		}
-		initial := firstDisplayCell(currentSpace.name)
-		rows = append(rows, sidebarRow{
-			label: rail + styleSpaceDim.Render(initial),
-			kind:  "space", space: spaceIndex, tab: -1, pane: -1,
-		})
-		showTabs := len(currentSpace.tabs) > 1
-		for tabIndex, currentTab := range currentSpace.tabs {
-			shownPanes := 0
-			for paneIndex, currentPane := range currentTab.panes {
-				if currentPane.floating != nil {
-					continue
-				}
-				activeTab := spaceIndex == m.selected && tabIndex == currentSpace.active
-				paneMarker := " "
-				prefix := rail + "   " + paneMarker
-				if showTabs && shownPanes == 0 {
-					tabStyle := stylePaneDim
-					tabMarker := " "
-					if activeTab {
-						tabStyle = styleSpaceSel
-						tabMarker = styleSpaceSel.Render("▸")
-					}
-					prefix = rail + tabMarker + tabStyle.Render(truncate(tabDisplayName(currentTab, tabIndex), 1)) + " " + paneMarker
-				}
-				icon := m.sidebarPaneIcon(currentPane)
-				if lipgloss.Width(icon) > 1 {
-					icon = ansiCut(icon, 0, 1)
-				}
-				rows = append(rows, sidebarRow{
-					label: prefix + icon,
-					kind:  "pane", space: spaceIndex, tab: tabIndex, pane: paneIndex,
-				})
-				shownPanes++
-			}
-		}
-	}
-	return rows
-}
-
-func firstDisplayCell(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return "?"
-	}
-	return truncate(trimmed, 1)
+	return runewidth.Truncate(value, width, "") + "..."
 }
 
 func (m Model) sidebarHeaderRow() string {
 	width := m.sidebarContentWidth()
-	arrow := styleNewButton.Render(sidebarCollapseIcon)
+	arrow := "←"
 	label := " " + styleSection.Render("WORKSPACES")
-	arrowWidth := lipgloss.Width(arrow)
+	left := max(0, width-lipgloss.Width(label)-lipgloss.Width(arrow)-1)
 	if m.sideCollapsed {
-		arrow = styleNewButton.Render(sidebarExpandIcon)
-		arrowWidth = lipgloss.Width(arrow)
-		pad := max(0, width-arrowWidth-1)
-		return strings.Repeat(" ", pad) + arrow + " "
+		arrow = "→"
+		label = ""
+		left = 1
 	}
-	pad := max(1, width-lipgloss.Width(label)-arrowWidth-1)
-	return label + strings.Repeat(" ", pad) + arrow + " "
+	right := max(0, width-lipgloss.Width(label)-left-lipgloss.Width(arrow))
+	return label + strings.Repeat(" ", left) + styleNewButton.Render(arrow) + strings.Repeat(" ", right)
+}
+
+func (m Model) sidebarToggleHit(x, y int) bool {
+	left := m.sidebarContentWidth() - 2
+	if m.sideCollapsed {
+		left = 1
+	}
+	return y == 1 && x == left
 }
 
 func (m Model) sidebarSettingsRow() string {
@@ -2334,17 +2331,188 @@ func (m Model) sidebarSettingsRow() string {
 	return " " + stylePaneDim.Render("⚙  settings")
 }
 
-func (m Model) sidebarToggleHit(x, y int) bool {
-	if y != 1 {
-		return false
-	}
+func (m Model) sidebarRows() []sidebarRow {
 	width := m.sidebarContentWidth()
-	iconWidth := lipgloss.Width(sidebarCollapseIcon)
+	rows := []sidebarRow{{}, {label: m.sidebarHeaderRow()}, {}}
+
+	// Reserve one shared tab-label column whenever any workspace has tabs.
+	tabNameWidth := 0
+	tabNameLimit := 6
 	if m.sideCollapsed {
-		iconWidth = lipgloss.Width(sidebarExpandIcon)
+		tabNameLimit = 1
 	}
-	left := max(0, width-iconWidth-1)
-	return x >= left && x < left+iconWidth
+	for _, currentSpace := range m.spaces {
+		if len(currentSpace.tabs) <= 1 {
+			continue
+		}
+		for tabIndex, currentTab := range currentSpace.tabs {
+			name := truncate(tabDisplayName(currentTab, tabIndex), tabNameLimit)
+			tabNameWidth = max(tabNameWidth, lipgloss.Width(name))
+		}
+	}
+
+	groupKeys := make(map[string]string, len(m.spaces))
+	groupCounts := make(map[string]int, len(m.spaces))
+	for _, currentSpace := range m.spaces {
+		key := "space:" + filepath.Clean(currentSpace.cwd)
+		if common := m.gitCommon[workspacePathKey(currentSpace.cwd)]; common != "" {
+			key = common
+		}
+		groupKeys[currentSpace.cwd] = key
+		groupCounts[key]++
+	}
+	var groupOrder []string
+	seenGroups := make(map[string]bool, len(groupKeys))
+	for _, currentSpace := range m.spaces {
+		key := groupKeys[currentSpace.cwd]
+		if !seenGroups[key] {
+			seenGroups[key] = true
+			groupOrder = append(groupOrder, key)
+		}
+	}
+	for groupIndex, groupKey := range groupOrder {
+		grouped := groupCounts[groupKey] > 1
+		groupSelected := false
+		if grouped {
+			for index, candidate := range m.spaces {
+				if groupKeys[candidate.cwd] == groupKey && index == m.selected {
+					groupSelected = true
+					break
+				}
+			}
+		}
+		if groupIndex > 0 {
+			rows = append(rows, sidebarRow{label: " " + styleDivider.Render(strings.Repeat("─", width-2)), kind: "divider", space: -1, tab: -1, pane: -1})
+		}
+		if grouped && !m.sideCollapsed {
+			groupName := filepath.Base(filepath.Dir(groupKey))
+			groupRail := " "
+			if groupSelected {
+				groupRail = styleSpaceSel.Render("▍")
+			}
+			rows = append(rows, sidebarRow{label: groupRail + styleSpaceDim.Render(truncate(groupName, width-3)), kind: "group", space: -1, tab: -1, pane: -1})
+		}
+		for spaceIndex, currentSpace := range m.spaces {
+			if groupKeys[currentSpace.cwd] != groupKey {
+				continue
+			}
+			rail := " "
+			if groupSelected || spaceIndex == m.selected {
+				rail = styleSpaceSel.Render("▍")
+			}
+			branch := m.gitBranch(currentSpace.cwd)
+			spaceName := currentSpace.name
+			if grouped && branch.value != "" {
+				spaceName = branch.value
+			}
+			if m.sideCollapsed {
+				spaceName = compactSidebarName(spaceName, 6)
+			} else {
+				spaceName = truncate(spaceName, width-3)
+			}
+			spaceStyle := styleSpaceDim
+			if grouped {
+				spaceStyle = stylePaneDim
+				if spaceIndex == m.selected {
+					spaceStyle = styleSpaceSel
+				}
+			}
+			rows = append(rows, sidebarRow{label: rail + spaceStyle.Render(spaceName), kind: "space", space: spaceIndex, tab: -1, pane: -1})
+			if branch.value != "" && !grouped {
+				suffixWidth := 0
+				suffix := ""
+				if branch.ahead > 0 && !m.sideCollapsed {
+					text := fmt.Sprintf(" ↑%d", branch.ahead)
+					suffix += styleDotOn.Render(text)
+					suffixWidth += lipgloss.Width(text)
+				}
+				if branch.behind > 0 && !m.sideCollapsed {
+					text := fmt.Sprintf(" ↓%d", branch.behind)
+					suffix += lipgloss.NewStyle().Foreground(colorAlt).Render(text)
+					suffixWidth += lipgloss.Width(text)
+				}
+				branchStyle := stylePaneDim
+				if spaceIndex == m.selected {
+					branchStyle = styleSpaceSel
+				}
+				branchName := truncate(branch.value, width-3-suffixWidth)
+				if m.sideCollapsed {
+					branchName = compactSidebarName(branch.value, 6)
+				}
+				rows = append(rows, sidebarRow{label: rail + branchStyle.Render(branchName) + suffix, kind: "space", space: spaceIndex, tab: -1, pane: -1})
+			}
+
+			showTabs := len(currentSpace.tabs) > 1
+			for tabIndex, currentTab := range currentSpace.tabs {
+				paneIndent := rail + "  "
+				paneNameWidth := width - 6
+				if tabNameWidth > 0 {
+					indentWidth := tabNameWidth + 3
+					if m.sideCollapsed {
+						indentWidth--
+					}
+					paneIndent = rail + strings.Repeat(" ", indentWidth)
+					paneNameWidth = width - tabNameWidth - 7
+				}
+				shownPanes := 0
+				for paneIndex, currentPane := range currentTab.panes {
+					if currentPane.floating != nil {
+						continue
+					}
+					rowIndent := paneIndent
+					if showTabs && shownPanes == 0 {
+						tabStyle := stylePaneDim
+						tabMarker := "  "
+						activeTab := spaceIndex == m.selected && tabIndex == currentSpace.active
+						if activeTab {
+							tabStyle = styleSpaceSel
+							tabMarker = styleSpaceSel.Render("▸") + " "
+						}
+						if m.sideCollapsed {
+							tabMarker = " "
+							if activeTab {
+								tabMarker = styleSpaceSel.Render("▸")
+							}
+						}
+						tabName := truncate(tabDisplayName(currentTab, tabIndex), tabNameLimit)
+						tabPadding := strings.Repeat(" ", tabNameWidth-lipgloss.Width(tabName))
+						rowIndent = rail + tabMarker + tabStyle.Render(tabName) + tabPadding + " "
+					}
+					selected := spaceIndex == m.selected && tabIndex == currentSpace.active && paneIndex == currentTab.selected
+					state := sidebarPaneState(currentPane)
+					if m.sideCollapsed {
+						state = ""
+					}
+					stateWidth := lipgloss.Width(state)
+					if state != "" {
+						state = " " + state
+						stateWidth++
+					}
+					name := truncate(m.paneDisplayName(currentPane), paneNameWidth-stateWidth)
+					if m.sideCollapsed {
+						name = compactSidebarName(m.paneDisplayName(currentPane), 2)
+					}
+					nameStyle := stylePaneDim
+					if currentPane.running {
+						nameStyle = stylePaneRun
+					}
+					if selected {
+						nameStyle = stylePaneSel
+					}
+					trailing := ""
+					if m.sideCollapsed {
+						trailing = " "
+					}
+					rows = append(rows, sidebarRow{label: rowIndent + m.sidebarPaneIcon(currentPane) + nameStyle.Render(name) + state + trailing, kind: "pane", space: spaceIndex, tab: tabIndex, pane: paneIndex})
+					shownPanes++
+				}
+			}
+		}
+	}
+	if !m.sideCollapsed {
+		rows = append(rows, sidebarRow{}, sidebarRow{label: " " + styleNewButton.Render("+  new workspace"), kind: "new", space: -1, tab: -1, pane: -1})
+	}
+	return rows
 }
 
 // sidebarHit maps a body row (header already subtracted) to a sidebar
@@ -2435,8 +2603,11 @@ func (m Model) publishCursor() {
 			m.cursorSink.Set(m.sidebarContentWidth()+1+inner.x+x, 2+inner.y+y, true)
 			return
 		}
-	case modeNewSpace, modeRename:
+	case modeNewSpace, modeCreateWorktree, modeRename:
 		badge := " NEW WORKSPACE "
+		if m.mode == modeCreateWorktree {
+			badge = " CREATE WORKTREE "
+		}
 		if m.mode == modeRename {
 			badge = " RENAME "
 		}
@@ -2567,6 +2738,10 @@ func (m Model) renderSidebar() string {
 	if offset < len(source)-list {
 		rows[list-1] = stylePaneDim.Render(" ↓  more")
 	}
+	// Extra trailing space after the gear: unlike the other sidebar icons
+	// (●○↑↓), U+2699 is uncommon enough that some fonts (Windows
+	// Terminal's default among them) substitute a wider fallback glyph
+	// for it, which then overlaps a single following space.
 	rows = append(rows, m.sidebarSettingsRow(), "")
 
 	return lipgloss.NewStyle().
@@ -2826,6 +3001,9 @@ func (m Model) renderFooter() string {
 			}
 			body += styleBarMuted.Render("  ") + strings.Join(hints, styleBarMuted.Render("  "))
 		}
+	case modeCreateWorktree:
+		badge = styleBadgeInput.Render(" CREATE WORKTREE ")
+		body = styleBarText.Render(" " + m.input.View())
 	case modeRename:
 		badge = styleBadgeInput.Render(" RENAME ")
 		body = styleBarText.Render(" " + m.input.View())

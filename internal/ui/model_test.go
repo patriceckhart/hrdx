@@ -142,6 +142,33 @@ func TestSidebarHitMapsHierarchyRows(t *testing.T) {
 	}
 }
 
+func TestSidebarGroupsGitWorktrees(t *testing.T) {
+	model := newTestModel("/tmp/main", "/tmp/feature", "/tmp/other")
+	model.gitCommon["/tmp/main"] = "/tmp/hrdx/.git"
+	model.gitCommon["/tmp/feature"] = "/tmp/hrdx/.git"
+	model.branches["/tmp/main"] = branchInfo{value: "main", checked: time.Now()}
+	model.branches["/tmp/feature"] = branchInfo{value: "feature-auth", checked: time.Now()}
+	rows := model.sidebarRows()
+	groups, branches := 0, 0
+	for _, row := range rows {
+		if row.kind == "group" {
+			groups++
+			if !strings.Contains(row.label, "hrdx") {
+				t.Fatalf("group row = %q", row.label)
+			}
+		}
+		if row.kind == "space" && (row.space == 0 || row.space == 1) {
+			branches++
+			if !strings.Contains(row.label, []string{"main", "feature-auth"}[row.space]) {
+				t.Fatalf("worktree row = %q", row.label)
+			}
+		}
+	}
+	if groups != 1 || branches != 2 {
+		t.Fatalf("groups/branches = %d/%d, want 1/2", groups, branches)
+	}
+}
+
 func TestBranchStaysWithWorkspaceName(t *testing.T) {
 	model := newTestModel("/tmp/api", "/tmp/web")
 	model.selected = 1
@@ -870,5 +897,19 @@ func TestRemovePaneClearsCompletionState(t *testing.T) {
 	model.removePane(owner, target)
 	if model.wasBusy[target.id] || model.soundSeq[target.id] != 0 || model.paneAttention[target.id] {
 		t.Fatal("removed pane retained completion state")
+	}
+}
+
+func TestCreateWorktreeMenuOpensPromptForTarget(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	target := model.currentSpace()
+	model.openSpaceMenu(target, rect{x: 1, y: 1})
+	updated, _ := model.runMenuAction("space-worktree-create")
+	got := updated.(Model)
+	if got.mode != modeCreateWorktree || got.worktreeSpace != target {
+		t.Fatalf("mode/target = %d/%p, want create prompt/%p", got.mode, got.worktreeSpace, target)
+	}
+	if got.input.Placeholder != "worktree name (created under .worktrees)" {
+		t.Fatalf("placeholder = %q", got.input.Placeholder)
 	}
 }

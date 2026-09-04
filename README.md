@@ -64,6 +64,7 @@ hrdx --agent claude
 | `--pi-bin PATH` | Use a specific pi binary |
 | `--zot-bin PATH` | Use a specific zot binary |
 | `--shell PATH` | Shell for shell panes (default `$SHELL`; on Windows only when resolvable, otherwise `%COMSPEC%`/`powershell.exe`) |
+| `--worktree-create-cmd CMD` | Override the worktree creation command template |
 | `--state PATH` | State file for workspace persistence (empty disables) |
 | `--fresh` | Ignore saved workspaces and start clean |
 | `--api` | Serve the control API on a unix socket (default on, `--api=false` disables) |
@@ -81,6 +82,7 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `a` or `A` | Split right / below with the default agent directly |
 | `s` or `S` | Split with a new shell pane directly (right / below), also `%`/`\"` and `\|`/`-` |
 | `w` | New workspace (directory prompt with tab completion, then agent/shell picker) |
+| *(unbound)* | Open a Git worktree in the current workspace group (configure `worktree-add` in `keys.json`) |
 | `t` | New tab in the current workspace (opens the agent/shell picker) |
 | `n` or `p` | Next / previous tab |
 | `]` or `[` | Next / previous workspace |
@@ -111,16 +113,26 @@ Keys are configurable via a `keys.json` next to the state file (`~/Library/Appli
   "quit": "Q",
   "agent-cycle": "g",
   "sidebar-toggle": "B",
+  "worktree-add": "w",
   "navigate-up": "home",
   "navigate-down": "end"
 }
 ```
 
-Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
+Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `worktree-add` (unbound by default), `tab-new`, `tab-next`, `tab-prev`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
+Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `worktree-add` (unbound by default), `tab-new`, `tab-next`, `tab-prev`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
 
 ## Mouse
 
-Everything is clickable: workspace, tab, and pane rows in the sidebar, the sidebar collapse/expand control at the top, the main tab bar, menus, and the settings entry at the bottom. Git worktrees from the same repository are grouped together; use the workspace context menu's **Open worktree** action to add an existing worktree, or **Create worktree...** to create one. Drag workspaces to reorder them, drag pane borders to resize, right-click for context menus, and drag with the left button to select text. Completed selections are copied straight to your clipboard by default; turn this off under the terminal tab in settings when you only want the highlight. Wheel events go to the pane under the cursor: agent TUIs scroll themselves, shells scroll their local history, and `shift+pgup` / `shift+pgdn` do the same from the keyboard.
+Everything is clickable: workspace, tab, and pane rows in the sidebar, the collapse arrow beside `WORKSPACES`, the main tab bar, menus, and the settings entry at the bottom. Git worktrees from the same repository are grouped together; use the workspace context menu's **Open worktree** action to add an existing worktree, or **Create worktree...** to create one. The compact sidebar shortens names and hides the workspace heading and new-workspace entry.
+
+Creation prompts for a branch/name and runs `worktree.json` next to the state file. The default command is `git worktree add -b {name} {path}`, with `{path}` set to `.worktrees/<name>` in the repository. Configure a custom shell command with `{name}`, `{path}`, and `{repo}` placeholders, for example:
+
+```json
+{"create": "git worktree add -b {name} {path}"}
+```
+
+The same template can be supplied with `--worktree-create-cmd`; that flag takes precedence over `worktree.json`. Paths and values are shell-quoted before interpolation. Drag workspaces to reorder them, drag pane borders to resize, right-click for context menus, and drag with the left button to select text. Wheel events go to the pane under the cursor: agent TUIs scroll themselves, shells scroll their local history, and `shift+pgup` / `shift+pgdn` do the same from the keyboard.
 
 ## Remote and container panes
 
@@ -268,15 +280,11 @@ Custom themes are JSON files that override any subset of the default colors; mis
   "colors": {
     "accent": 201,
     "bar_bg": "#101010"
-  },
-  "icons": {
-    "sidebar_collapse": "‹",
-    "sidebar_expand": "›"
   }
 }
 ```
 
-Color values are ANSI 256 color numbers or `"#rrggbb"` strings. Icon values may be one or two display cells wide.
+Values are ANSI 256 color numbers or `"#rrggbb"` strings.
 
 | Color | Used for |
 |---|---|
@@ -289,13 +297,6 @@ Color values are ANSI 256 color numbers or `"#rrggbb"` strings. Icon values may 
 | `bad` | Errors, exited dots |
 | `bar_bg` / `bar_fg` | Header and footer bars |
 | `ink` | Text on accent backgrounds, tab bar strip |
-
-| Icon | Used for |
-|---|---|
-| `sidebar_collapse` | Button that collapses the expanded workspace sidebar |
-| `sidebar_expand` | Button that expands the collapsed workspace sidebar |
-
-Suggested sidebar toggle pairs: `‹`/`›`, `◂`/`▸`, `←`/`→`, `«`/`»`, `[-`/`+]`, or `⟨`/`⟩`.
 
 See `examples/themes/` for a full example.
 

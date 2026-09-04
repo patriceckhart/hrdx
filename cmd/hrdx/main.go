@@ -139,7 +139,7 @@ func main() {
 
 	var cwd paths
 	var agent, provider, model, reasoning, shell, statePath string
-	var zotBin, piBin, claudeBin, codexBin string
+	var zotBin, piBin, claudeBin, codexBin, worktreeCmd string
 	var resume, fresh, apiOn, persistOn bool
 	flag.Var(&cwd, "cwd", "project directory to open as a workspace (repeatable)")
 	flag.StringVar(&agent, "agent", "zot", "default agent for new panes: zot, pi, claude, codex, or a custom harness kind")
@@ -151,6 +151,7 @@ func main() {
 	flag.StringVar(&claudeBin, "claude-bin", "", "path to the claude binary")
 	flag.StringVar(&codexBin, "codex-bin", "", "path to the codex binary")
 	flag.StringVar(&shell, "shell", defaultShell(), "shell for shell panes")
+	flag.StringVar(&worktreeCmd, "worktree-create-cmd", "", "command template for creating worktrees ({name}, {path}, {repo})")
 	flag.StringVar(&statePath, "state", state.DefaultPath(), "state file for workspace persistence (empty disables)")
 	flag.BoolVar(&resume, "continue", false, "resume each agent's latest session")
 	flag.BoolVar(&fresh, "fresh", false, "ignore saved workspaces and start clean")
@@ -199,9 +200,10 @@ func main() {
 			"claude": claudeBin,
 			"codex":  codexBin,
 		},
-		ZotArgs: zotArgs,
-		Shell:   shell,
-		Version: resolvedVersion(),
+		ZotArgs:           zotArgs,
+		Shell:             shell,
+		WorktreeCreateCmd: worktreeCmd,
+		Version:           resolvedVersion(),
 	}
 	if statePath != "" {
 		config.CacheDir = filepath.Dir(statePath)
