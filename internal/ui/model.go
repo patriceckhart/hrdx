@@ -129,73 +129,73 @@ func (s *space) tab() *tab {
 }
 
 type Model struct {
-	config        Config
-	spaces        []*space
-	selected      int
-	nextID        int
-	width         int
-	height        int
-	mode          inputMode
-	input         textinput.Model
-	status        string
-	statusIsInfo  bool // status is a notice, not an error: accent styling
-	kittyPushed   bool
-	drag          *splitNode
-	dragFull      rect
-	statePath     string
-	spinFrame     int
-	ticking       bool
-	selPane       *pane
-	selRect       rect
-	statusSeq     int
-	menuPane      *pane
-	menuTab       *tab
-	menuSpace     *space
-	menuAt        rect // menu box in body coordinates
-	menuIndex     int
-	customMenus   []api.MenuRegister // ephemeral socket API context-menu entries
-	pickItems     []menuItem         // kind picker entries while it is open
-	navKeys       map[string]string  // custom local navigation overrides from keys.json
-	pickAction    string             // "space", "tab", "split-right", "split-down", "settings"
-	pickSpace     *space             // tab target for the picker
-	pickPath      string             // directory for a pending new workspace
-	worktreeSpace *space             // workspace whose repository receives a new worktree
-	worktreeAt    rect               // menu position used when starting the create prompt
-	renamePane    *pane
-	renameTab     *tab
-	renameSpace   *space
-	branches      map[string]branchInfo
-	gitCommon     map[string]string // cwd -> git common directory, discovered on add/restore
-	disabled      map[string]bool   // agent kinds switched off in settings
-	soundOn       bool              // play a sound when an agent finishes a turn
-	soundKind     string            // which sound: "ding" or a sounds.json entry
-	notifyOn      bool              // post a desktop notification on finish
-	themeName     string            // active bundled or user theme name
-	autoCopy      bool              // copy completed text selections to the clipboard
-	clipboardCopy func(string)      // process-local clipboard writer, replaceable in tests
-	wasBusy       map[int]bool      // pane id -> spinner seen, for finish notifications
-	soundSeq      map[int]uint64    // invalidates stale agent-finish confirmations
-	paneAttention map[int]bool      // completed while unfocused; cleared only by focus
-	settingsTab   int               // active tab of the settings window
-	settingsIndex int               // selected row of the settings window
-	completions   []string
-	completion    int
-	sideScroll    int
-	sideCollapsed bool
-	dragSpace     *space            // sidebar workspace being dragged for reordering
-	dragMoved     bool              // the drag moved rows: suppress persist-less release
-	hintScroll    int               // first visible hint in the ctrl+b footer row
-	updateInfo    update.Info       // populated async; Available drives the notice
-	events        *api.Broadcaster  // API event fan-out, nil-safe
-	holder        *holder.Client    // session holder connection, nil = local panes
-	blurredAt     time.Time         // when the terminal lost focus, for stale detection
-	appBlurred    bool              // terminal application currently lacks focus
-	cursorSink    *CursorSink       // publishes the hardware cursor position, nil-safe
-	prefixKeys    map[string]string // prefix key -> action, defaults plus keys.json
-	prefixTrigger string            // key that enters prefix mode from a live terminal
-	keyOverrides  map[string]string // action -> key from keys.json, for hints
-	findIndex     int               // selected row of the find window
-	quitting      bool              // shutting down: exits must not edit the layout
+	config          Config
+	spaces          []*space
+	selected        int
+	nextID          int
+	width           int
+	height          int
+	mode            inputMode
+	input           textinput.Model
+	status          string
+	statusIsInfo    bool // status is a notice, not an error: accent styling
+	kittyPushed     bool
+	drag            *splitNode
+	dragFull        rect
+	statePath       string
+	spinFrame       int
+	ticking         bool
+	selPane         *pane
+	selRect         rect
+	statusSeq       int
+	menuPane        *pane
+	menuTab         *tab
+	menuSpace       *space
+	menuAt          rect // menu box in body coordinates
+	menuIndex       int
+	customMenus     []api.MenuRegister // ephemeral socket API context-menu entries
+	pickItems       []menuItem         // kind picker entries while it is open
+	navKeys         map[string]string  // custom local navigation overrides from keys.json
+	pickAction      string             // "space", "tab", "split-right", "split-down", "settings"
+	pickSpace       *space             // tab target for the picker
+	pickPath        string             // directory for a pending new workspace
+	worktreeSpace   *space             // workspace whose repository receives a new worktree
+	worktreeListSeq uint64             // invalidates stale asynchronous worktree listings
+	renamePane      *pane
+	renameTab       *tab
+	renameSpace     *space
+	branches        map[string]branchInfo
+	gitCommon       map[string]string // cwd -> git common directory, discovered on add/restore
+	disabled        map[string]bool   // agent kinds switched off in settings
+	soundOn         bool              // play a sound when an agent finishes a turn
+	soundKind       string            // which sound: "ding" or a sounds.json entry
+	notifyOn        bool              // post a desktop notification on finish
+	themeName       string            // active bundled or user theme name
+	autoCopy        bool              // copy completed text selections to the clipboard
+	clipboardCopy   func(string)      // process-local clipboard writer, replaceable in tests
+	wasBusy         map[int]bool      // pane id -> spinner seen, for finish notifications
+	soundSeq        map[int]uint64    // invalidates stale agent-finish confirmations
+	paneAttention   map[int]bool      // completed while unfocused; cleared only by focus
+	settingsTab     int               // active tab of the settings window
+	settingsIndex   int               // selected row of the settings window
+	completions     []string
+	completion      int
+	sideScroll      int
+	sideCollapsed   bool
+	dragSpace       *space            // sidebar workspace being dragged for reordering
+	dragMoved       bool              // the drag moved rows: suppress persist-less release
+	hintScroll      int               // first visible hint in the ctrl+b footer row
+	updateInfo      update.Info       // populated async; Available drives the notice
+	events          *api.Broadcaster  // API event fan-out, nil-safe
+	holder          *holder.Client    // session holder connection, nil = local panes
+	blurredAt       time.Time         // when the terminal lost focus, for stale detection
+	appBlurred      bool              // terminal application currently lacks focus
+	cursorSink      *CursorSink       // publishes the hardware cursor position, nil-safe
+	prefixKeys      map[string]string // prefix key -> action, defaults plus keys.json
+	prefixTrigger   string            // key that enters prefix mode from a live terminal
+	keyOverrides    map[string]string // action -> key from keys.json, for hints
+	findIndex       int               // selected row of the find window
+	quitting        bool              // shutting down: exits must not edit the layout
 }
 
 // staleAfter is how long the terminal must have been unfocused before a
@@ -412,6 +412,7 @@ type paneStartedMsg struct {
 }
 
 type worktreeListMsg struct {
+	seq   uint64
 	items []menuItem
 	err   error
 }
@@ -867,7 +868,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.startPane(newSpace, newSpace.tab().panes[0])
 
 	case worktreeListMsg:
-		if m.pickAction != "worktree" {
+		if m.pickAction != "worktree" || msg.seq != m.worktreeListSeq {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -1144,7 +1145,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.status = "creating worktree..."
 			m.statusIsInfo = true
-			return m, createWorktreeCommand(target.cwd, path, target, m.config.WorktreeCreateCmd, m.config.Shell)
+			return m, createWorktreeCommand(target.cwd, strings.TrimSpace(m.input.Value()), path, target, m.config.WorktreeCreateCmd, m.config.Shell)
 		}
 		m.clearCompletions()
 		var cmd tea.Cmd
@@ -1614,13 +1615,12 @@ func (m *Model) toggleAgent(kind string) tea.Cmd {
 
 // openKindPicker shows a menu with the installed agents plus shell. The
 // chosen kind feeds the pending action: new workspace, new tab, or split.
-func (m *Model) openCreateWorktreeInput(target *space, at rect) (tea.Model, tea.Cmd) {
+func (m *Model) openCreateWorktreeInput(target *space) (tea.Model, tea.Cmd) {
 	if target == nil {
 		return *m, nil
 	}
 	m.mode = modeCreateWorktree
 	m.worktreeSpace = target
-	m.worktreeAt = at
 	m.input.Placeholder = "worktree name (created under .worktrees)"
 	m.input.SetValue("")
 	m.clearCompletions()
@@ -1641,10 +1641,13 @@ func (m *Model) openWorktreePicker(target *space, at rect) (tea.Model, tea.Cmd) 
 	m.pickSpace = target
 	m.pickPath = ""
 	m.openMenuBox(at)
+	m.worktreeListSeq++
+	seq := m.worktreeListSeq
 	cwd := target.cwd
+	spaces := append([]*space(nil), m.spaces...)
 	return *m, func() tea.Msg {
-		items, err := listWorktreeItems(cwd, m.spaces)
-		return worktreeListMsg{items: items, err: err}
+		items, err := listWorktreeItems(cwd, spaces)
+		return worktreeListMsg{seq: seq, items: items, err: err}
 	}
 }
 
@@ -1753,7 +1756,7 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 		case "space-worktree":
 			return m.openWorktreePicker(targetSpace, at)
 		case "space-worktree-create":
-			return m.openCreateWorktreeInput(targetSpace, at)
+			return m.openCreateWorktreeInput(targetSpace)
 		}
 		return m, nil
 	}

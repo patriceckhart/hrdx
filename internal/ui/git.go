@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -129,7 +130,7 @@ func resolveWorktreePath(cwd, name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("worktree name is required")
 	}
-	if filepath.IsAbs(name) || filepath.Clean(name) != name || name == "." || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+	if filepath.IsAbs(name) || strings.ContainsAny(name, `/\\`) || name == "." || name == ".." {
 		return "", fmt.Errorf("worktree name must be a relative directory name")
 	}
 	path, err := filepath.Abs(filepath.Join(cwd, ".worktrees", name))
@@ -144,26 +145,63 @@ func resolveWorktreePath(cwd, name string) (string, error) {
 	return path, nil
 }
 
-func shellQuote(value string) string {
+func shellQuote(value, shell string) string {
+	return shellQuoteFor(runtime.GOOS, value, shell)
+}
+
+func shellQuoteFor(goos, value, shell string) string {
+	if goos == "windows" {
+		switch strings.ToLower(shellBaseFor(goos, shell)) {
+		case "cmd.exe":
+			return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+		case "powershell.exe", "pwsh.exe":
+			return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+		}
+	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func createWorktreeCommand(cwd, path string, target *space, template, shell string) tea.Cmd {
+func shellCommandArgs(shell, command string) []string {
+	return shellCommandArgsFor(runtime.GOOS, shell, command)
+}
+
+func shellCommandArgsFor(goos, shell, command string) []string {
+	if goos == "windows" {
+		switch strings.ToLower(shellBaseFor(goos, shell)) {
+		case "cmd.exe":
+			return []string{"/C", command}
+		case "powershell.exe", "pwsh.exe":
+			return []string{"-Command", command}
+		}
+	}
+	return []string{"-c", command}
+}
+
+func shellBaseFor(goos, shell string) string {
+	if goos == "windows" {
+		shell = strings.TrimRight(shell, `/\\`)
+		if index := strings.LastIndexAny(shell, `/\\`); index >= 0 {
+			return shell[index+1:]
+		}
+	}
+	return filepath.Base(shell)
+}
+
+func createWorktreeCommand(cwd, name, path string, target *space, template, shell string) tea.Cmd {
 	return func() tea.Msg {
 		if template == "" {
 			template = defaultWorktreeCreateCmd
 		}
-		name := filepath.Base(path)
-		command := strings.NewReplacer("{name}", shellQuote(name), "{path}", shellQuote(path), "{repo}", shellQuote(cwd)).Replace(template)
 		if shell == "" {
 			shell = "sh"
 		}
+		command := strings.NewReplacer("{name}", shellQuote(name, shell), "{path}", shellQuote(path, shell), "{repo}", shellQuote(cwd, shell)).Replace(template)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return worktreeCreateMsg{space: target, path: path, err: err}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, shell, "-c", command)
+		cmd := exec.CommandContext(ctx, shell, shellCommandArgs(shell, command)...)
 		cmd.Dir = cwd
 		if output, err := cmd.CombinedOutput(); err != nil {
 			if len(output) > 0 {

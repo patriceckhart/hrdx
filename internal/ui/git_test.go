@@ -44,8 +44,40 @@ func TestResolveWorktreePathAllowsNewNameOnly(t *testing.T) {
 	if _, err := resolveWorktreePath(root, "../outside"); err == nil {
 		t.Fatal("resolve accepted a path traversal")
 	}
+	if _, err := resolveWorktreePath(root, "feature/auth"); err == nil {
+		t.Fatal("resolve accepted a nested worktree name")
+	}
 	if _, err := resolveWorktreePath(root, ""); err == nil {
 		t.Fatal("resolve accepted an empty name")
+	}
+}
+
+func TestShellCommandArgs(t *testing.T) {
+	tests := []struct {
+		goos, shell, flag string
+	}{
+		{"linux", "sh", "-c"},
+		{"windows", `C:\\Windows\\System32\\cmd.exe`, "/C"},
+		{"windows", "powershell.exe", "-Command"},
+		{"windows", "bash.exe", "-c"},
+	}
+	for _, tt := range tests {
+		got := shellCommandArgsFor(tt.goos, tt.shell, "echo ok")
+		if len(got) != 2 || got[0] != tt.flag || got[1] != "echo ok" {
+			t.Errorf("%s %s args = %#v", tt.goos, tt.shell, got)
+		}
+	}
+}
+
+func TestShellQuoteForWindows(t *testing.T) {
+	if got := shellQuoteFor("windows", `C:\\Program Files\\hrdx`, `C:\\Windows\\System32\\cmd.exe`); got != `"C:\\Program Files\\hrdx"` {
+		t.Fatalf("cmd quote = %q", got)
+	}
+	if got := shellQuoteFor("windows", "it's", "powershell.exe"); got != "'it''s'" {
+		t.Fatalf("powershell quote = %q", got)
+	}
+	if got := shellQuoteFor("windows", "it's", "bash.exe"); got != "'it'\"'\"'s'" {
+		t.Fatalf("bash quote = %q", got)
 	}
 }
 
