@@ -4,7 +4,11 @@ import "github.com/patriceckhart/hrdx/internal/state"
 
 // snapshot converts the live model into its serializable form.
 func (m *Model) snapshot() state.State {
-	saved := state.State{Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind, Notify: m.notifyOn, Theme: m.themeName, SidebarCollapsed: m.sideCollapsed}
+	saved := state.State{
+		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
+		Notify: m.notifyOn, Theme: m.themeName,
+		SidebarCollapsed: m.sideCollapsed, DisableAutoCopy: !m.autoCopy,
+	}
 	for _, spec := range agentSpecs {
 		if m.disabled[spec.kind] {
 			saved.DisabledAgents = append(saved.DisabledAgents, spec.kind)

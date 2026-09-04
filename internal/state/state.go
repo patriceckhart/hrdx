@@ -72,6 +72,10 @@ type State struct {
 	// compact form. Omitted in older state files, where the full sidebar
 	// remains the zero-value default.
 	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+
+	// DisableAutoCopy prevents completed text selections from being copied to
+	// the system clipboard. Its zero value preserves the legacy auto-copy behavior.
+	DisableAutoCopy bool `json:"disable_auto_copy,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.

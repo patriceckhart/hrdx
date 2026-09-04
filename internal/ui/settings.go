@@ -14,10 +14,17 @@ import (
 // settingsRow is one toggleable line of the active settings section.
 type settingsRow struct {
 	label  string
-	action string // "toggle:<kind>", "sound", or "sound:<kind>"
+	action string
 }
 
-var settingsTabNames = []string{"agents", "notification", "theme"}
+var settingsTabNames = []string{"agents", "notification", "theme", "terminal"}
+
+func settingsCheck(on bool) string {
+	if on {
+		return "[x] "
+	}
+	return "[ ] "
+}
 
 func (m *Model) openSettings() {
 	m.mode = modeSettings
@@ -32,14 +39,8 @@ func (m *Model) closeSettings() {
 func (m Model) settingsRows() []settingsRow {
 	switch m.settingsTab {
 	case 1: // notification
-		check := func(on bool) string {
-			if on {
-				return "[x] "
-			}
-			return "[ ] "
-		}
 		rows := []settingsRow{
-			{check(m.soundOn) + "play a sound when an agent finishes", "sound"},
+			{settingsCheck(m.soundOn) + "play a sound when an agent finishes", "sound"},
 		}
 		for _, kind := range soundKindList() {
 			mark := "( ) "
@@ -49,7 +50,7 @@ func (m Model) settingsRows() []settingsRow {
 			rows = append(rows, settingsRow{"  " + mark + kind, "sound:" + kind})
 		}
 		rows = append(rows, settingsRow{
-			check(m.notifyOn) + "system notification", "notify",
+			settingsCheck(m.notifyOn) + "system notification", "notify",
 		})
 		return rows
 	case 2: // theme
@@ -62,6 +63,8 @@ func (m Model) settingsRows() []settingsRow {
 			rows = append(rows, settingsRow{mark + name, "theme:" + name})
 		}
 		return rows
+	case 3: // terminal
+		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
 	default: // agents
 		installed := map[string]bool{}
 		for _, kind := range m.installedAgents() {
@@ -117,6 +120,10 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		if m.notifyOn {
 			systemNotify()
 		}
+	}
+	if row.action == "auto-copy" {
+		m.autoCopy = !m.autoCopy
+		m.persist()
 	}
 	return nil
 }

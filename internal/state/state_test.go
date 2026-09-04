@@ -10,7 +10,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	zero := 0
 	one := 1
 	original := State{
-		Selected: 1,
+		Selected:        1,
+		DisableAutoCopy: true,
 		Workspaces: []Workspace{
 			{
 				Name:     "api",
@@ -34,7 +35,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(loaded.Workspaces) != 1 || loaded.Selected != 1 {
+	if len(loaded.Workspaces) != 1 || loaded.Selected != 1 || !loaded.DisableAutoCopy {
 		t.Fatalf("loaded = %+v", loaded)
 	}
 	ws := loaded.Workspaces[0]

@@ -164,6 +164,8 @@ type Model struct {
 	soundKind     string          // which sound: "ding" or a sounds.json entry
 	notifyOn      bool            // post a desktop notification on finish
 	themeName     string          // active bundled or user theme name
+	autoCopy      bool            // copy completed text selections to the clipboard
+	clipboardCopy func(string)    // process-local clipboard writer, replaceable in tests
 	wasBusy       map[int]bool    // pane id -> spinner seen, for finish notifications
 	soundSeq      map[int]uint64  // invalidates stale agent-finish confirmations
 	paneAttention map[int]bool    // completed while unfocused; cleared only by focus
@@ -437,7 +439,8 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		soundOn: saved.Sound, status: harnessProblem,
 		soundKind: saved.SoundKind, notifyOn: saved.Notify, themeName: saved.Theme,
 		sideCollapsed: saved.SidebarCollapsed,
-		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
+		autoCopy: !saved.DisableAutoCopy, clipboardCopy: copyToClipboard,
+		prefixKeys: buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
 	model.prefixTrigger = model.primaryKey("prefix")
 	if statePath != "" {
 		for _, problem := range []string{
@@ -1792,8 +1795,10 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				text := m.selPane.term.SelectionText()
 				if strings.TrimSpace(text) == "" || !strings.Contains(text, "\n") && len([]rune(text)) <= 1 {
 					m.selPane.term.ClearSelection()
-				} else {
-					copyToClipboard(text)
+				} else if m.autoCopy {
+					if m.clipboardCopy != nil {
+						m.clipboardCopy(text)
+					}
 					flash = m.flashInfo(fmt.Sprintf("copied %d chars", len([]rune(text))))
 				}
 			}

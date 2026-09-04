@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/patriceckhart/hrdx/internal/state"
+	"github.com/patriceckhart/hrdx/internal/term"
 )
 
 func TestSettingsOpenToggleClose(t *testing.T) {
@@ -44,6 +46,66 @@ func TestSettingsOpenToggleClose(t *testing.T) {
 	model = updated.(Model)
 	if model.mode != modeTerminal {
 		t.Fatalf("mode = %d, want modeTerminal after esc", model.mode)
+	}
+}
+
+func TestAutoCopySettingDefaultsOnAndPersists(t *testing.T) {
+	model := New(Config{Shell: "/bin/sh"}, nil, "", state.State{})
+	if !model.autoCopy {
+		t.Fatal("legacy state should default automatic copying to on")
+	}
+	model.settingsTab = 3
+	rows := model.settingsRows()
+	if len(rows) != 1 || rows[0].action != "auto-copy" || rows[0].label != "[x] automatically copy selected text" {
+		t.Fatalf("terminal settings rows = %+v", rows)
+	}
+
+	model.toggleSettingsRow(rows[0])
+	if model.autoCopy || !model.snapshot().DisableAutoCopy {
+		t.Fatal("automatic copying should be off and persisted after toggling")
+	}
+	if restored := New(Config{Shell: "/bin/sh"}, nil, "", model.snapshot()); restored.autoCopy {
+		t.Fatal("restored model should keep automatic copying off")
+	}
+}
+
+func TestSelectionRespectsAutoCopySetting(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		autoCopy bool
+		wantCopy string
+	}{
+		{name: "enabled", autoCopy: true, wantCopy: "hello"},
+		{name: "disabled", autoCopy: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := newTestModel("/tmp/api")
+			target := model.currentPane()
+			target.term = term.NewHolderPane(&keyboardCaptureHost{}, 1, 80, 24)
+			target.term.Feed([]byte("hello"))
+			target.term.StartSelection(0, 0)
+			target.term.ExtendSelection(4, 0)
+			model.selPane = target
+			model.selRect = rect{w: 80, h: 24}
+			model.autoCopy = test.autoCopy
+			copied := ""
+			model.clipboardCopy = func(text string) { copied = text }
+
+			updated, _ := model.updateMouse(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+			model = updated.(Model)
+			if copied != test.wantCopy {
+				t.Fatalf("clipboard text = %q, want %q", copied, test.wantCopy)
+			}
+			if test.autoCopy && model.status != "copied 5 chars" {
+				t.Fatalf("status = %q, want copy confirmation", model.status)
+			}
+			if !test.autoCopy && model.status != "" {
+				t.Fatalf("status = %q, want no copy confirmation", model.status)
+			}
+			if !target.term.HasSelection() {
+				t.Fatal("completed selection should remain highlighted")
+			}
+		})
 	}
 }
 
