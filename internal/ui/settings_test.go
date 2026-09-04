@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/patriceckhart/hrdx/internal/state"
 	"github.com/patriceckhart/hrdx/internal/term"
 )
@@ -106,6 +108,25 @@ func TestSelectionRespectsAutoCopySetting(t *testing.T) {
 				t.Fatal("completed selection should remain highlighted")
 			}
 		})
+	}
+}
+
+func TestSettingsOverlayRowsKeepScreenWidth(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	model.width = 80
+	model.height = 20
+	model.openSettings()
+
+	bodyRows := make([]string, model.height-2)
+	for index := range bodyRows {
+		bodyRows[index] = strings.Repeat(".", model.width)
+	}
+	model.overlaySettings(bodyRows)
+
+	for index, row := range bodyRows {
+		if width := lipgloss.Width(row); width != model.width {
+			t.Fatalf("body row %d width = %d, want %d", index, width, model.width)
+		}
 	}
 }
 

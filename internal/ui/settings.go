@@ -152,6 +152,13 @@ func (m Model) settingsBox() rect {
 	}
 	m.settingsTab = tab
 	width += 6 // border + padding
+	// The tab row has one leading cell and one trailing spacer per label.
+	// Include its full width so it cannot extend beyond the modal border.
+	tabsWidth := 1
+	for _, name := range settingsTabNames {
+		tabsWidth += lipgloss.Width(name) + 3
+	}
+	width = max(width, tabsWidth+2) // left and right border
 	bodyW := max(1, m.width)
 	bodyH := max(1, m.height-2)
 	// top border, tabs, separator, rows, blank, hint, bottom border. Long
