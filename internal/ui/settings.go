@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -17,7 +18,7 @@ type settingsRow struct {
 	action string
 }
 
-var settingsTabNames = []string{"agents", "notification", "theme", "terminal"}
+var settingsTabNames = []string{"agents", "notification", "theme", "terminal", "worktree"}
 
 func settingsCheck(on bool) string {
 	if on {
@@ -65,6 +66,9 @@ func (m Model) settingsRows() []settingsRow {
 		return rows
 	case 3: // terminal
 		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+	case 4: // worktree
+		command := truncate("command: "+m.worktreeCommand(), 48)
+		return []settingsRow{{command, "worktree-command"}}
 	default: // agents
 		installed := map[string]bool{}
 		for _, kind := range m.installedAgents() {
@@ -124,6 +128,15 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy
 		m.persist()
+	}
+	if row.action == "worktree-command" {
+		m.mode = modeNewSpace
+		m.worktreeEdit = true
+		m.input.Placeholder = "worktree command"
+		m.input.SetValue(m.worktreeCommand())
+		m.input.CursorEnd()
+		m.input.Focus()
+		return textinput.Blink
 	}
 	return nil
 }

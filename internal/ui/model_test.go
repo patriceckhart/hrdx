@@ -694,6 +694,36 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestSidebarTabContextMenuClosesOnlyThatTab(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	space := model.spaces[0]
+	model.addTab(space, "shell")
+
+	tabRow := -1
+	for index, row := range model.sidebarRows() {
+		if row.kind == "pane" && row.space == 0 && row.tab == 1 && row.pane == 0 {
+			tabRow = index
+			break
+		}
+	}
+	if tabRow < 0 {
+		t.Fatal("could not find second tab in sidebar")
+	}
+	updated, _ := model.updateMouse(tea.MouseMsg{
+		X: 1, Y: tabRow + 1, Button: tea.MouseButtonRight, Action: tea.MouseActionPress,
+	})
+	opened := updated.(Model)
+	if opened.menuTab != space.tabs[1] || opened.menuSpace != nil {
+		t.Fatalf("sidebar tab opened wrong menu: tab=%p space=%p", opened.menuTab, opened.menuSpace)
+	}
+
+	updated, _ = opened.runMenuAction("tab-close")
+	closed := updated.(Model)
+	if len(closed.spaces) != 1 || len(closed.spaces[0].tabs) != 1 {
+		t.Fatalf("tab close changed workspace count or left tabs: spaces=%d tabs=%d", len(closed.spaces), len(closed.spaces[0].tabs))
+	}
+}
+
 func TestTabMenuHidesCloseForOnlyTab(t *testing.T) {
 	model := newTestModel("/tmp/api")
 	currentSpace := model.spaces[0]

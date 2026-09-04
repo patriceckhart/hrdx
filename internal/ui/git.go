@@ -12,6 +12,7 @@ import (
 
 type branchInfo struct {
 	value   string
+	common  string
 	ahead   int
 	behind  int
 	checked time.Time
@@ -24,7 +25,7 @@ func (m Model) gitBranch(cwd string) branchInfo {
 	if entry, ok := m.branches[cwd]; ok && time.Since(entry.checked) < 10*time.Second {
 		return entry
 	}
-	entry := branchInfo{value: readGitBranch(cwd), checked: time.Now()}
+	entry := branchInfo{value: readGitBranch(cwd), common: readGitCommonDir(cwd), checked: time.Now()}
 	if entry.value != "" {
 		entry.ahead, entry.behind = readGitAheadBehind(cwd)
 	}
@@ -68,6 +69,27 @@ func readGitBranch(cwd string) string {
 		return line[:7]
 	}
 	return ""
+}
+
+func readGitCommonDir(cwd string) string {
+	output, err := runGit(cwd, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return ""
+	}
+	common := strings.TrimSpace(string(output))
+	if common == "" {
+		return ""
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(cwd, common)
+	}
+	if resolved, err := filepath.EvalSymlinks(common); err == nil {
+		common = resolved
+	}
+	if filepath.Base(filepath.Clean(common)) != ".git" {
+		return ""
+	}
+	return filepath.Clean(filepath.Dir(common))
 }
 
 // readGitAheadBehind returns how many commits HEAD is ahead of and behind

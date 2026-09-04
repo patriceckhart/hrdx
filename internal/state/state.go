@@ -74,7 +74,8 @@ type State struct {
 
 	// SidebarCollapsed remembers whether the workspace sidebar is compact.
 	// Its zero value keeps older state files expanded.
-	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+	SidebarCollapsed bool   `json:"sidebar_collapsed,omitempty"`
+	WorktreeCommand  string `json:"worktree_command,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
