@@ -2320,11 +2320,7 @@ func (m Model) sidebarHeaderRow() string {
 }
 
 func (m Model) sidebarToggleHit(x, y int) bool {
-	left := m.sidebarContentWidth() - 2
-	if m.sideCollapsed {
-		left = 1
-	}
-	return y == 1 && x == left
+	return y == 1 && x == m.sidebarContentWidth()-2
 }
 
 func (m Model) sidebarSettingsRow() string {
@@ -2336,7 +2332,10 @@ func (m Model) sidebarSettingsRow() string {
 
 func (m Model) sidebarRows() []sidebarRow {
 	width := m.sidebarContentWidth()
-	rows := []sidebarRow{{}, {label: m.sidebarHeaderRow()}, {}}
+	rows := []sidebarRow{{}, {label: m.sidebarHeaderRow()}}
+	if !m.sideCollapsed {
+		rows = append(rows, sidebarRow{})
+	}
 
 	// Reserve one shared tab-label column whenever any workspace has tabs.
 	tabNameWidth := 0
