@@ -254,8 +254,11 @@ func main() {
 	// so IME and dead-key composition previews appear where the user types.
 	cursorSink := ui.NewCursorSink()
 	modelUI.SetCursorSink(cursorSink)
-	program := tea.NewProgram(modelUI, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(),
-		tea.WithOutput(ui.NewCursorOutput(os.Stdout, cursorSink)))
+	options := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(),
+		tea.WithOutput(ui.NewCursorOutput(os.Stdout, cursorSink))}
+	program := tea.NewProgram(modelUI, append(options, platformInputOptions()...)...)
+	stopResize := make(chan struct{})
+	resizeStopped := watchPlatformResize(program, stopResize)
 
 	if apiOn && statePath != "" {
 		socket := filepath.Join(filepath.Dir(statePath), "hrdx.sock")
@@ -276,6 +279,8 @@ func main() {
 	}
 
 	_, runErr := program.Run()
+	close(stopResize)
+	<-resizeStopped
 	if plugins != nil {
 		plugins.Close()
 	}

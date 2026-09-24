@@ -73,6 +73,8 @@ hrdx --agent claude
 
 A native Windows `hrdx.exe` launched from Git Bash ignores an MSYS-only `SHELL` value such as `/usr/bin/bash`, which Windows cannot resolve, and falls back to `%COMSPEC%`. To use Git Bash for panes, pass a native path explicitly, for example `hrdx --shell "C:/Program Files/Git/bin/bash.exe"`.
 
+On Windows, hrdx reads VT input from the console so bracketed multi-line paste reaches an agent pane as one paste instead of separate Enter presses. This requires a terminal that supports bracketed paste, such as Windows Terminal. Console size changes are detected by polling, so pane resizing may lag by up to 100 ms.
+
 ## Keys
 
 All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
