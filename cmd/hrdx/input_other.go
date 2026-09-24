@@ -9,4 +9,8 @@ import tea "github.com/charmbracelet/bubbletea"
 func platformInputOptions() []tea.ProgramOption { return nil }
 
 // watchPlatformResize is a no-op on Unix; Bubble Tea handles SIGWINCH.
-func watchPlatformResize(*tea.Program) {}
+func watchPlatformResize(*tea.Program, <-chan struct{}) <-chan struct{} {
+	finished := make(chan struct{})
+	close(finished)
+	return finished
+}
