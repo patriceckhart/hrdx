@@ -59,7 +59,7 @@ func (m Model) settingsRows() []settingsRow {
 			rows = append(rows, settingsRow{"  " + mark + kind, "sound:" + kind})
 		}
 		rows = append(rows, settingsRow{
-			settingsCheck(m.notifyOn) + "system notification", "notify",
+			settingsCheck(m.notifyOn) + "system notification (terminal bell, may sound)", "notify",
 		})
 		return rows
 	case 2: // theme
