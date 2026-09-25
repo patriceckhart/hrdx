@@ -17,7 +17,7 @@ import (
 // SupportedGrants is intentionally smaller than the proposal. An unknown grant
 // cannot accidentally become authority when a newer plugin requests it.
 func SupportedGrants() []string {
-	return []string{"ui.action.contribute", "ui.notification", "ui.status.contribute", "ui.provider.contribute", "workspace.read", "pane.read_metadata", "pane.read_screen", "pane.create", "pane.close", "pane.send_input", "workspace.create", "workspace.close", "storage.plugin_private", "host.events.subscribe", "ui.view.contribute", "ui.view.input"}
+	return []string{"ui.action.contribute", "ui.notification", "ui.status.contribute", "ui.provider.contribute", "workspace.read", "pane.read_metadata", "pane.read_screen", "pane.create", "pane.close", "pane.send_input", "workspace.create", "workspace.close", "workspace.move", "storage.plugin_private", "host.events.subscribe", "ui.view.contribute", "ui.view.input"}
 }
 
 func ApprovalPath(base, id string) string {

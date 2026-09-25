@@ -362,7 +362,7 @@ func (m *Model) handlePluginRequest(request plugin.Request) tea.Cmd {
 		"ui.notify": "ui.notification", "ui.status": "ui.status.contribute",
 		"events.subscribe": "host.events.subscribe", "events.unsubscribe": "host.events.subscribe",
 		"ui.view.open": "ui.view.contribute", "ui.view.update": "ui.view.contribute", "ui.view.close": "ui.view.contribute",
-		"status": "workspace.read", "pane.read": "pane.read_screen",
+		"status": "workspace.read", "group.list": "workspace.read", "workspace.move": "workspace.move", "pane.read": "pane.read_screen",
 		"pane.close": "pane.close", "pane.create": "pane.create", "pane.send_text": "pane.send_input", "workspace.create": "workspace.create", "workspace.close": "workspace.close",
 	}
 	capability, supported := capabilities[request.Method]
@@ -447,6 +447,9 @@ func (m *Model) handlePluginRequest(request plugin.Request) tea.Cmd {
 	case "events.unsubscribe":
 		delete(m.pluginSubscriptions, request.Plugin)
 		reply(map[string]bool{"ok": true}, "", "")
+		return nil
+	case "group.list":
+		reply(groupsForStatus(m.pluginSnapshot(approval)), "", "")
 		return nil
 	case "status":
 		reply(m.pluginSnapshot(approval), "", "")
@@ -547,6 +550,15 @@ func (m *Model) handlePluginRequest(request plugin.Request) tea.Cmd {
 			return command
 		}
 		payload = params
+	case "workspace.move":
+		var params api.WorkspaceMove
+		if !decode(&params) {
+			return invalid()
+		}
+		if !scope(workspace(params.Workspace)) {
+			return deny()
+		}
+		payload = params
 	case "workspace.close":
 		var params api.WorkspaceRef
 		if !decode(&params) {
@@ -562,7 +574,7 @@ func (m *Model) handlePluginRequest(request plugin.Request) tea.Cmd {
 			}
 		}
 		m.closeCurrentSpace()
-		m.publish(api.Event{Event: api.EventWorkspaceClosed, Data: api.WorkspaceEvent{Workspace: owner.name, Path: owner.cwd}})
+		m.publish(api.Event{Event: api.EventWorkspaceClosed, Data: api.WorkspaceEvent{Workspace: owner.name, Path: owner.cwd, GroupPath: append([]string(nil), owner.groupPath...)}})
 		reply(map[string]bool{"ok": true}, "", "")
 		return nil
 	case "workspace.create":

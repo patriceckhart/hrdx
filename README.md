@@ -216,6 +216,28 @@ spinner on screen while it is really idle or blocked on a prompt: a matching
 title always outranks the screen scrape. Check what your harness emits with
 `printf '\e]2;...\a'`-style OSC titles before picking a substring.
 
+## Workspace groups
+
+Groups are optional organisational labels, independent of directories, branches, tabs, and PTY lifetime. Socket clients and approved plugins can place any workspace, including non-Git directories, at an arbitrarily nested `group_path`:
+
+```json
+{"id":"1","method":"workspace.create","params":{"path":"/work/game-feature","agent":"shell","group_path":["game","reviews"]}}
+{"id":"2","method":"workspace.move","params":{"workspace":"/work/game-feature","group_path":["game","reviews","ready"]}}
+{"id":"3","method":"group.list"}
+```
+
+`workspace.move` requires an array; `[]` makes a workspace standalone. Names are exact, case-sensitive labels, not filesystem paths: a slash inside a name is literal. Each name must be nonblank, contain no control characters, and have at most 80 Unicode characters; the path is limited to 4096 UTF-8 bytes including one separator byte per component. Missing groups and ancestors appear implicitly and disappear when their last workspace moves or closes. There are no separately stored group objects or group IDs.
+
+`group.list` returns `{"type":"groups","groups":[{"group_path":["game"]},{"group_path":["game","reviews"]},{"group_path":["game","reviews","ready"]}]}` inside the usual `result`. Paths are unique, in first-workspace order, ancestors before descendants. Status keeps the existing flat `workspaces` array and adds optional `group_path`; branch information stays in `branch`. Workspace created, closed, and moved events carry group metadata (omitted for standalone workspaces). Moving replies with `workspace`, `path`, and optional `group_path`. Events remain best-effort; query status or group.list to recover. Separate group lifecycle events are not emitted.
+
+The sidebar adds plain nested headings while keeping the existing workspace, branch, tab and pane rows. Headings do not select, close, or drag anything. Groups and their children follow first-workspace order; dragging a workspace still reorders the underlying workspace list, not its membership. Keyboard workspace cycling and flat status retain that list order. Deep indentation is capped to keep labels visible in narrow or compact sidebars. The selection rail stays at the left edge; only row content is indented. Group placement is RPC/plugin-only; existing keys and context menus are unchanged.
+
+Groups persist with the workspace. Old state and clients without group fields remain standalone, and an invalid saved group path falls back to standalone without discarding panes. Moving never recreates a tab, pane, holder session, or split layout.
+
+For an optional Git default, pass `"group_from_git":true` to `workspace.create` without `group_path` (or with null). A repository root or linked worktree uses the primary repository directory basename as its suggested single-component group. An explicit array, including `[]`, always wins. Detection does not execute Git, traverse parent directories, or change branch metadata; unavailable or unrecognised metadata leaves the workspace standalone. Equal repository basenames intentionally share a label: supply an explicit path to distinguish them. The chosen label is persisted, not recomputed on restore or branch changes. Git defaults are opt-in, preserving this revision's existing flat sidebar and Git branch display.
+
+Plugins can use existing scoped status snapshots, actions, and right/bottom docked views to provide alternative organisation controls. `workspace.create` accepts the same group options; `workspace.move` requires its own grant and an exact in-scope workspace path; `group.list` uses `workspace.read` and exposes only groups containing in-scope workspaces. This version adds no template language or sidebar replacement API: host rendering and mouse hit testing remain host-owned.
+
 ## Experimental plugins
 
 Plugins are opt-in external processes communicating through bounded NDJSON over stdin/stdout. They can contribute context-menu actions, finder search providers, notifications, footer status, scoped metadata subscriptions, approved pane operations and input, private storage, and separately enabled floating views. Manifests may declare workspace activation markers and typed configuration options. Normal startup runs no plugins. Custom harnesses and holder sessions are unchanged.
@@ -298,7 +320,9 @@ echo '{"id": "7", "method": "menu.register", "params": {"target": "pane", "label
 |---|---|
 | `ping` | Liveness check, returns `pong` |
 | `status` | Workspaces, tabs, and panes with id, kind, running, and busy state |
-| `workspace.create` | Open a directory as a workspace (`path`, optional `agent`) |
+| `workspace.create` | Open a directory as a workspace (`path`, optional `agent`, `group_path`, `group_from_git`) |
+| `workspace.move` | Set a workspace's organisational `group_path` without restarting panes (`workspace`: name or path) |
+| `group.list` | List occupied group paths and their ancestors |
 | `workspace.close` | Close a workspace by name or path |
 | `pane.create` | Add a pane (`workspace` name or path, `kind`, `split`: `right`, `down`, `tab`, `float`) |
 | `pane.send_text` | Type into a pane (`pane_id`, `text`, optional `enter`) |
@@ -312,7 +336,7 @@ echo '{"id": "7", "method": "menu.register", "params": {"target": "pane", "label
 
 Successful responses are `{"id": "...", "result": {...}}`; failures are `{"id": "...", "error": {"code": "not_found", "message": "..."}}` with codes `not_found`, `invalid_params`, `unknown_method`, `timeout`, and `error`.
 
-After `events.subscribe` the connection stays open and hrdx pushes lines like `{"event": "pane.busy_changed", "data": {"pane_id": 3, "busy": false}}`. Events: `workspace.created`, `workspace.closed`, `pane.created`, `pane.closed`, `pane.busy_changed`, and `menu.action`, so a script can react the moment an agent finishes instead of polling.
+After `events.subscribe` the connection stays open and hrdx pushes lines like `{"event": "pane.busy_changed", "data": {"pane_id": 3, "busy": false}}`. Events: `workspace.created`, `workspace.closed`, `workspace.moved`, `pane.created`, `pane.closed`, `pane.busy_changed`, and `menu.action`, so a script can react the moment an agent finishes instead of polling.
 
 A `menu.register` entry appears after the built-in actions in the requested context menu. Selecting it publishes `{"event":"menu.action","data":{"action_id":"custom.run_linter","target":"pane","pane_id":3,"workspace":"api","path":"/path/to/api","tab_index":0}}`. Registrations are ephemeral, re-registering an `action_id` replaces it, and events use the API's existing best-effort delivery for slow subscribers.
 

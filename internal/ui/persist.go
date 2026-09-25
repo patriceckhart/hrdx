@@ -16,9 +16,10 @@ func (m *Model) snapshot() state.State {
 	}
 	for _, currentSpace := range m.spaces {
 		ws := state.Workspace{
-			Name:   currentSpace.name,
-			CWD:    currentSpace.cwd,
-			Active: currentSpace.active,
+			GroupPath: append([]string(nil), currentSpace.groupPath...),
+			Name:      currentSpace.name,
+			CWD:       currentSpace.cwd,
+			Active:    currentSpace.active,
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -74,6 +75,9 @@ func (m *Model) restore(saved state.State) {
 			continue
 		}
 		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active}
+		if validateGroupPath(ws.GroupPath) == nil {
+			restored.groupPath = append([]string(nil), ws.GroupPath...)
+		}
 		for _, savedTab := range savedTabs {
 			if len(savedTab.Panes) == 0 {
 				continue

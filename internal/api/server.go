@@ -132,7 +132,7 @@ func (s *Server) dispatch(request wireRequest) wireResponse {
 	switch request.Method {
 	case "ping":
 		return wireResponse{ID: request.ID, Result: map[string]string{"type": "pong"}}
-	case "status", "plugins.status":
+	case "status", "plugins.status", "group.list":
 		payload = nil
 	case "plugins.control":
 		var params PluginControl
@@ -142,6 +142,12 @@ func (s *Server) dispatch(request wireRequest) wireResponse {
 		payload = params
 	case "workspace.create":
 		var params WorkspaceCreate
+		if err := decodeParams(request.Params, &params); err != nil {
+			return fail(CodeInvalidParams, err.Error())
+		}
+		payload = params
+	case "workspace.move":
+		var params WorkspaceMove
 		if err := decodeParams(request.Params, &params); err != nil {
 			return fail(CodeInvalidParams, err.Error())
 		}

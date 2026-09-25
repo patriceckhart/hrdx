@@ -112,10 +112,11 @@ type tab struct {
 }
 
 type space struct {
-	name   string
-	cwd    string
-	tabs   []*tab
-	active int
+	groupPath []string
+	name      string
+	cwd       string
+	tabs      []*tab
+	active    int
 }
 
 // tab returns the active tab, never nil for a live workspace.
@@ -2457,7 +2458,7 @@ func (m Model) sidebarRows() []sidebarRow {
 			sidebarRow{label: " " + styleNewButton.Render("+  new workspace"), kind: "new", space: -1, tab: -1, pane: -1},
 		)
 	}
-	return rows
+	return m.groupSidebarRows(rows)
 }
 
 // sidebarHit maps a body row (header already subtracted) to a sidebar
