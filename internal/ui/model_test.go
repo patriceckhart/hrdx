@@ -300,6 +300,53 @@ func TestFooterInputDoesNotWrapOnNarrowWindow(t *testing.T) {
 	}
 }
 
+func TestFooterNewSpacePromptShowsFullHint(t *testing.T) {
+	model := newTestModel("/tmp/api")
+
+	updated, _ := model.updateKey(tea.KeyMsg{Type: tea.KeyCtrlB})
+	model = updated.(Model)
+	updated, _ = model.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	if model.mode != modeNewSpace {
+		t.Fatalf("mode = %d, want modeNewSpace after ctrl+b w", model.mode)
+	}
+
+	footer := model.renderFooter()
+	if !strings.Contains(footer, "directory (tab completes)") {
+		t.Fatalf("footer = %q, want the full directory hint", footer)
+	}
+	if strings.Contains(footer, "\n") {
+		t.Fatalf("footer wrapped: %q", footer)
+	}
+
+	// A narrow bar clips the hint instead of wrapping the footer.
+	model.width = 30
+	narrow := model.renderFooter()
+	if strings.Contains(narrow, "\n") || lipgloss.Width(narrow) != model.width {
+		t.Fatalf("narrow footer = %q, want one clipped row", narrow)
+	}
+	model.width = 120
+
+	// The hint gives way to the typed path.
+	updated, _ = model.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("~/ap")})
+	model = updated.(Model)
+	if footer = model.renderFooter(); strings.Contains(footer, "directory") || !strings.Contains(footer, "~/ap") {
+		t.Fatalf("footer after typing = %q, want the value without the hint", footer)
+	}
+}
+
+func TestFooterRenamePromptShowsFullHint(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	target := model.currentPane()
+	target.name = ""
+
+	updated, _ := model.openRenameInput(target)
+	model = updated.(Model)
+	if footer := model.renderFooter(); !strings.Contains(footer, "pane name") {
+		t.Fatalf("footer = %q, want the full pane name hint", footer)
+	}
+}
+
 func TestSidebarScrollClamps(t *testing.T) {
 	model := newTestModel("/tmp/api")
 	model.height = 6 // tiny: 4 sidebar rows, two pinned for settings + blank

@@ -2963,7 +2963,7 @@ func (m Model) renderFooter() string {
 	switch m.mode {
 	case modeNewSpace:
 		badge = styleBadgeInput.Render(" NEW WORKSPACE ")
-		body = styleBarText.Render(" " + m.input.View())
+		body = m.renderPromptInput()
 		if len(m.completions) > 0 {
 			var hints []string
 			for index, candidate := range m.completions {
@@ -2978,7 +2978,7 @@ func (m Model) renderFooter() string {
 		}
 	case modeRename:
 		badge = styleBadgeInput.Render(" RENAME ")
-		body = styleBarText.Render(" " + m.input.View())
+		body = m.renderPromptInput()
 	case modePluginView:
 		badge = styleBadgeInput.Render(" PLUGIN ")
 		body = styleBarMuted.Render(" esc closes view, " + m.prefixTrigger + " opens host commands")
@@ -3041,6 +3041,22 @@ func (m Model) renderFooter() string {
 	}
 	gap := m.width - badgeWidth - lipgloss.Width(body) - lipgloss.Width(right)
 	return badge + body + styleBar.Render(strings.Repeat(" ", max(0, gap))) + right
+}
+
+// renderPromptInput renders the shared prompt input for the footer, followed
+// by the input's placeholder as a muted hint while the field is empty. The
+// hint is drawn here instead of leaving it to the textinput: bubbles sizes a
+// placeholder to Width+1 runes, and hrdx leaves Width unset so the value is
+// never scrolled, so the input would render only the placeholder's first cell.
+func (m Model) renderPromptInput() string {
+	input := m.input
+	hint := input.Placeholder
+	input.Placeholder = ""
+	body := styleBarText.Render(" " + input.View())
+	if input.Value() == "" && hint != "" {
+		body += styleBarMuted.Render(hint)
+	}
+	return body
 }
 
 func (m Model) navigationHint() string {
