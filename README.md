@@ -49,6 +49,8 @@ hrdx --cwd ~/Developer/api --cwd ~/Developer/web
 hrdx --agent claude
 ```
 
+Quitting hrdx leaves your shells and agents running in the background; reattach by relaunching `hrdx`, or stop the background holder with `hrdx stop` (see [Persistence](#persistence)).
+
 ### Flags
 
 | Flag | Purpose |
@@ -296,7 +298,7 @@ The [plugin protocol and manifest reference](docs/plugin-platform.md) documents 
 
 While hrdx runs it serves a control API on a Unix socket next to the state file (`hrdx.sock`), so scripts, editors, and coding agents can inspect and drive a running session. Disable with `--api=false`. The session holder uses `holder.sock` in the same directory.
 
-On macOS and Linux, if the state directory cannot create Unix sockets and `XDG_RUNTIME_DIR` is an absolute, usable directory, sockets fall back to a private `hrdx/` directory under `XDG_RUNTIME_DIR`. The names are `hrdx-<id>.sock` and `holder-<id>.sock`, where `<id>` is the first 16 hex digits of the SHA-256 hash of the absolute state-file path. Different `--state` files therefore get different runtime sockets. Existing socket paths remain the default whenever they work, and an existing live holder is reused even if the API must move. `hrdx plugins` control commands try the legacy API socket first, then the runtime socket. Runtime sockets last only as long as `XDG_RUNTIME_DIR`, which may be cleared at logout. Native Windows keeps its existing socket paths; WSL uses its own runtime and socket namespace.
+On macOS and Linux, if the state directory cannot create Unix sockets and `XDG_RUNTIME_DIR` is an absolute, usable directory, sockets fall back to a private `hrdx/` directory under `XDG_RUNTIME_DIR`. The names are `hrdx-<id>.sock` and `holder-<id>.sock`, where `<id>` is the first 16 hex digits of the SHA-256 hash of the absolute state-file path. Different `--state` files therefore get different runtime sockets. Existing socket paths remain the default whenever they work, and an existing live holder is reused even if the API must move. `hrdx plugins` control commands try the legacy API socket first, then the runtime socket, and `hrdx stop` does the same for the holder socket. Runtime sockets last only as long as `XDG_RUNTIME_DIR`, which may be cleared at logout. Native Windows keeps its existing socket paths; WSL uses its own runtime and socket namespace.
 
 The protocol is newline-delimited JSON: send one request per line, receive one response line with the same `id`.
 
@@ -396,11 +398,19 @@ The notification section of the settings window has two independent toggles for 
 
 ## Persistence
 
-Quitting hrdx does not kill your sessions. Pane processes live in a small background process (the session holder) that hrdx starts on demand and talks to over a local socket. Close the TUI, reopen it, and every shell and agent reattaches exactly where it was: running commands keep running, scrollback and screen state are replayed, nothing restarts. The holder is the same `hrdx` binary, uses no resources worth mentioning, and goes away when you kill its sessions.
+Quitting hrdx does not kill your sessions. Pane processes live in a small background process (the session holder) that hrdx starts on demand and talks to over a local socket. Close the TUI, reopen it, and every shell and agent reattaches exactly where it was: running commands keep running, scrollback and screen state are replayed, nothing restarts. The holder is the same `hrdx` binary and uses no resources worth mentioning.
 
 Workspaces, panes, split layout, ratios, selection, sidebar collapsed state, and holder session ids are saved automatically (default: `~/Library/Application Support/hrdx/state.json` on macOS, `$XDG_CONFIG_HOME/hrdx/state.json` on Linux, `%AppData%\hrdx\state.json` on Windows). An absolute `XDG_CONFIG_HOME` takes precedence on macOS too, so everything hrdx stores next to the state file (keys, harnesses, themes, plugins, sockets) follows it. An existing `~/Library/Application Support/hrdx` keeps being used until you move it to `$XDG_CONFIG_HOME/hrdx`, so setting the variable never orphans running sessions. Windows ignores the variable. On the next launch the layout is restored and each pane reattaches to its held session. When a held session is gone (rebooted machine, killed holder), the pane starts fresh instead: shell panes get a new shell, and agent panes relaunch resuming their latest session for that directory via the agent's own session store.
 
 `--persist=false` disables the holder (panes die with the TUI, like a plain terminal). `--fresh` skips restoring and cleans up now-unreferenced held sessions; `--state ""` disables persistence entirely.
+
+Stop the holder to restart it or reclaim everything it holds:
+
+```sh
+hrdx stop
+```
+
+With no held sessions it stops the holder and exits 0, and it exits 0 when no holder is running. If sessions are still held, it lists them (`id`, command, cwd, running state) and asks `Stop them too? [y/N]`. Only `y`/`Y` kills them; anything else, including a bare Enter or end of input, leaves the holder running and exits 1, so a stray key never discards running shells and agents. `hrdx stop` takes no options and targets the default state location. The holder serves one TUI client at a time, so `stop` works while hrdx is closed; with a TUI attached it reports the holder as busy rather than waiting, so quit the TUI (`ctrl+b q`) first. Stopping the holder does not edit saved state: the next launch restores the layout and starts fresh panes for the killed sessions.
 
 ## Development
 
