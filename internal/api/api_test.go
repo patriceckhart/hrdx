@@ -78,7 +78,7 @@ func TestServerPing(t *testing.T) {
 func TestServerRoutesMethods(t *testing.T) {
 	socket, _ := echoServer(t, nil)
 	for _, method := range []string{
-		"status", "workspace.create", "workspace.close",
+		"status", "workspace.create", "workspace.close", "workspace.move", "group.list",
 		"pane.create", "pane.send_text", "pane.read", "menu.register",
 	} {
 		line := `{"id": "r", "method": "` + method + `", "params": {}}`

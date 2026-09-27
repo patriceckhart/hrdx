@@ -45,13 +45,29 @@ const (
 
 // WorkspaceCreate opens a directory as a new workspace.
 type WorkspaceCreate struct {
-	Path  string `json:"path"`
-	Agent string `json:"agent,omitempty"` // agent kind or "shell"; empty: default agent
+	GroupFromGit bool     `json:"group_from_git,omitempty"`
+	GroupPath    []string `json:"group_path"`
+	Path         string   `json:"path"`
+	Agent        string   `json:"agent,omitempty"` // agent kind or "shell"; empty: default agent
 }
 
 // WorkspaceRef targets a workspace by name or path.
 type WorkspaceRef struct {
 	Workspace string `json:"workspace"`
+}
+
+type WorkspaceMove struct {
+	Workspace string   `json:"workspace"`
+	GroupPath []string `json:"group_path"`
+}
+
+type GroupStatus struct {
+	GroupPath []string `json:"group_path"`
+}
+
+type Groups struct {
+	Type   string        `json:"type"`
+	Groups []GroupStatus `json:"groups"`
 }
 
 // PaneCreate adds a pane to a workspace.
@@ -147,11 +163,12 @@ type TabStatus struct {
 
 // WorkspaceStatus describes one workspace in a status reply.
 type WorkspaceStatus struct {
-	Name     string      `json:"name"`
-	Path     string      `json:"path"`
-	Selected bool        `json:"selected"`
-	Branch   string      `json:"branch,omitempty"`
-	Tabs     []TabStatus `json:"tabs"`
+	GroupPath []string    `json:"group_path,omitempty"`
+	Name      string      `json:"name"`
+	Path      string      `json:"path"`
+	Selected  bool        `json:"selected"`
+	Branch    string      `json:"branch,omitempty"`
+	Tabs      []TabStatus `json:"tabs"`
 }
 
 // Status is the full state snapshot returned by the status method.
@@ -169,6 +186,7 @@ type Event struct {
 
 // Event names.
 const (
+	EventWorkspaceMoved   = "workspace.moved"
 	EventWorkspaceCreated = "workspace.created"
 	EventWorkspaceClosed  = "workspace.closed"
 	EventPaneCreated      = "pane.created"
@@ -188,8 +206,9 @@ type PaneEvent struct {
 
 // WorkspaceEvent is the data of workspace lifecycle events.
 type WorkspaceEvent struct {
-	Workspace string `json:"workspace"`
-	Path      string `json:"path,omitempty"`
+	GroupPath []string `json:"group_path,omitempty"`
+	Workspace string   `json:"workspace"`
+	Path      string   `json:"path,omitempty"`
 }
 
 // MenuActionEvent identifies a selected custom menu action and the UI

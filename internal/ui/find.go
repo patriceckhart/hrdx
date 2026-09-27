@@ -25,7 +25,7 @@ func (m *Model) openFind() (tea.Model, tea.Cmd) {
 	m.findIndex = 0
 	m.providerQuery = ""
 	m.providerRows = nil
-	m.input.Placeholder = "workspace, tab, or pane"
+	m.input.Placeholder = "group, workspace, tab, or pane"
 	m.input.SetValue("")
 	m.input.Focus()
 	return *m, textinput.Blink
@@ -38,8 +38,8 @@ func (m *Model) closeFind() {
 	m.input.Blur()
 }
 
-// findCandidates lists every pane whose path matches the typed query,
-// hierarchically labeled workspace › tab › pane.
+// findCandidates lists every pane whose label matches the typed query,
+// hierarchically labeled group › workspace › tab › pane.
 func (m Model) findCandidates() []findCandidate {
 	query := strings.ToLower(strings.TrimSpace(m.input.Value()))
 	var out []findCandidate
@@ -47,6 +47,9 @@ func (m Model) findCandidates() []findCandidate {
 		for tabIndex, currentTab := range currentSpace.tabs {
 			for paneIndex, currentPane := range currentTab.panes {
 				label := currentSpace.name
+				if len(currentSpace.groupPath) > 0 {
+					label = strings.Join(currentSpace.groupPath, " › ") + " › " + label
+				}
 				if len(currentSpace.tabs) > 1 {
 					label += " › " + strings.TrimSpace(m.tabLabel(currentTab, tabIndex))
 				}

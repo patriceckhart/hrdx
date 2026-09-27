@@ -49,6 +49,32 @@ func (m *Model) handleAPI(request api.Request) tea.Cmd {
 		}
 		return m.apiWorkspaceCreate(payload, answer)
 
+	case "group.list":
+		ok(groupsForStatus(m.apiStatus()))
+		return nil
+
+	case "workspace.move":
+		payload, valid := request.Payload.(api.WorkspaceMove)
+		if !valid || payload.GroupPath == nil {
+			answer(nil, api.CodeInvalidParams, "group_path is required; use [] for standalone")
+			return nil
+		}
+		if err := validateGroupPath(payload.GroupPath); err != nil {
+			answer(nil, api.CodeInvalidParams, err.Error())
+			return nil
+		}
+		target := m.spaceByRef(payload.Workspace)
+		if target == nil {
+			answer(nil, api.CodeNotFound, "workspace not found")
+			return nil
+		}
+		target.groupPath = append([]string(nil), payload.GroupPath...)
+		m.persist()
+		data := api.WorkspaceEvent{Workspace: target.name, Path: target.cwd, GroupPath: append([]string(nil), target.groupPath...)}
+		ok(data)
+		m.publish(api.Event{Event: api.EventWorkspaceMoved, Data: data})
+		return nil
+
 	case "workspace.close":
 		payload, valid := request.Payload.(api.WorkspaceRef)
 		if !valid {
@@ -68,7 +94,7 @@ func (m *Model) handleAPI(request api.Request) tea.Cmd {
 		m.closeCurrentSpace()
 		ok(map[string]any{"type": "workspace_closed", "workspace": target.name})
 		m.publish(api.Event{Event: api.EventWorkspaceClosed,
-			Data: api.WorkspaceEvent{Workspace: target.name, Path: target.cwd}})
+			Data: api.WorkspaceEvent{Workspace: target.name, Path: target.cwd, GroupPath: append([]string(nil), target.groupPath...)}})
 		return nil
 
 	case "pane.create":
@@ -246,7 +272,12 @@ func (m *Model) publishMenuAction(actionID string, targetPane *pane, targetTab *
 // spaceByRef finds a workspace by name or path.
 func (m *Model) spaceByRef(ref string) *space {
 	for _, currentSpace := range m.spaces {
-		if currentSpace.name == ref || currentSpace.cwd == ref {
+		if currentSpace.cwd == ref {
+			return currentSpace
+		}
+	}
+	for _, currentSpace := range m.spaces {
+		if currentSpace.name == ref {
 			return currentSpace
 		}
 	}
@@ -258,10 +289,11 @@ func (m *Model) apiStatus() api.Status {
 	status := api.Status{Type: "status", Version: m.config.Version}
 	for spaceIndex, currentSpace := range m.spaces {
 		ws := api.WorkspaceStatus{
-			Name:     currentSpace.name,
-			Path:     currentSpace.cwd,
-			Selected: spaceIndex == m.selected,
-			Branch:   m.gitBranch(currentSpace.cwd).value,
+			GroupPath: append([]string(nil), currentSpace.groupPath...),
+			Name:      currentSpace.name,
+			Path:      currentSpace.cwd,
+			Selected:  spaceIndex == m.selected,
+			Branch:    m.gitBranch(currentSpace.cwd).value,
 		}
 		for tabIndex, currentTab := range currentSpace.tabs {
 			tabStatus := api.TabStatus{
@@ -305,6 +337,10 @@ func (m *Model) apiResolveKind(kind string) (string, error) {
 }
 
 func (m *Model) apiWorkspaceCreate(payload api.WorkspaceCreate, answer func(any, string, string)) tea.Cmd {
+	if err := validateGroupPath(payload.GroupPath); err != nil {
+		answer(nil, api.CodeInvalidParams, err.Error())
+		return nil
+	}
 	kind, err := m.apiResolveKind(payload.Agent)
 	if err != nil {
 		answer(nil, api.CodeInvalidParams, err.Error())
@@ -322,6 +358,10 @@ func (m *Model) apiWorkspaceCreate(payload api.WorkspaceCreate, answer func(any,
 		}
 	}
 	newSpace := m.addSpaceKind(path, kind)
+	newSpace.groupPath = append([]string(nil), payload.GroupPath...)
+	if payload.GroupPath == nil && payload.GroupFromGit {
+		newSpace.groupPath = gitGroupPath(path)
+	}
 	m.selected = len(m.spaces) - 1
 	m.persist()
 	newPane := newSpace.tab().panes[0]
@@ -329,7 +369,7 @@ func (m *Model) apiWorkspaceCreate(payload api.WorkspaceCreate, answer func(any,
 		"type": "workspace_created", "workspace": newSpace.name, "pane_id": newPane.id,
 	}, "", "")
 	m.publish(api.Event{Event: api.EventWorkspaceCreated,
-		Data: api.WorkspaceEvent{Workspace: newSpace.name, Path: newSpace.cwd}})
+		Data: api.WorkspaceEvent{Workspace: newSpace.name, Path: newSpace.cwd, GroupPath: append([]string(nil), newSpace.groupPath...)}})
 	m.publish(api.Event{Event: api.EventPaneCreated,
 		Data: api.PaneEvent{Pane: newPane.id, Name: newPane.name, Kind: newPane.kind, Workspace: newSpace.name}})
 	return m.startPane(newSpace, newPane)

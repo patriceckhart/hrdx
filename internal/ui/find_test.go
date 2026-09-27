@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,6 +58,42 @@ func TestFindFiltersAndJumps(t *testing.T) {
 	}
 	if model.paneAttention[target.id] {
 		t.Fatal("find jump did not clear focused attention")
+	}
+}
+
+func TestFindCandidatesIncludeGroups(t *testing.T) {
+	model := newTestModel(t.TempDir(), t.TempDir(), t.TempDir())
+	for _, ws := range model.spaces {
+		ws.name = "repo"
+	}
+	model.spaces[0].groupPath = []string{"North", "Review"}
+	model.spaces[1].groupPath = []string{"South"}
+	model.openFind()
+
+	candidates := model.findCandidates()
+	if len(candidates) != 3 {
+		t.Fatalf("candidates = %+v, want three workspaces", candidates)
+	}
+	if !strings.HasPrefix(candidates[0].label, "North › Review › repo › ") ||
+		!strings.HasPrefix(candidates[1].label, "South › repo › ") ||
+		!strings.HasPrefix(candidates[2].label, "repo › ") {
+		t.Fatalf("group labels missing or standalone label changed: %+v", candidates)
+	}
+
+	for _, query := range []string{"north", "review"} {
+		model.input.SetValue(query)
+		matches := model.findCandidates()
+		if len(matches) != 1 || matches[0].spaceIndex != 0 {
+			t.Fatalf("query %q matched %+v, want North workspace", query, matches)
+		}
+		model.jumpTo(matches[0])
+		if model.selected != 0 {
+			t.Fatalf("query %q selected workspace %d", query, model.selected)
+		}
+	}
+	model.input.SetValue("south")
+	if matches := model.findCandidates(); len(matches) != 1 || matches[0].spaceIndex != 1 {
+		t.Fatalf("South matches = %+v", matches)
 	}
 }
 

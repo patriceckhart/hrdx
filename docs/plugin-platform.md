@@ -195,7 +195,9 @@ Every method below requires its separately named grant. Screen access is never i
 | `pane.create` | `pane.create` | Explicit workspace path, existing `kind`, and `split` of right, down, tab, or float. Floats need `width_pct`/`height_pct` (10 to 100), optional `anchor`, are limited to four, and are temporary |
 | `pane.send_text` | `pane.send_input` | `pane_id`, `text` up to 16 KiB, optional `enter`, queued behind keyboard input, `busy` when the pane is stalled |
 | `pane.close` | `pane.close` | `pane_id`, normal explicit pane cleanup |
-| `workspace.create` | `workspace.create` | Absolute `path` in scope, optional existing `agent` kind |
+| `workspace.create` | `workspace.create` | Absolute `path` in scope, optional existing `agent` kind, `group_path` array and opt-in `group_from_git` default |
+| `workspace.move` | `workspace.move` | Exact in-scope workspace path in `workspace`, required `group_path` array (`[]` for standalone); no PTY or selection changes |
+| `group.list` | `workspace.read` | Occupied group paths and ancestors from the scoped snapshot only |
 | `workspace.close` | `workspace.close` | Exact workspace path in `workspace` |
 | `events.subscribe` | `host.events.subscribe` and `workspace.read` | `events:["snapshot.changed"]` |
 | `events.unsubscribe` | `host.events.subscribe` | Remove this connection's subscription |
@@ -217,7 +219,7 @@ Subscribe returns an initial scoped snapshot and sequence zero. At most once per
 {"type":"event","method":"snapshot.changed","params":{"sequence":1,"snapshot":{"type":"status","version":"0.0.0","workspaces":[]}}}
 ```
 
-Snapshots reflect workspace, tab, pane, selection, and busy-state changes, including keyboard operations. Intermediate states can be coalesced. No raw keyboard input, terminal bytes, screen content, or terminal titles are emitted. Scope and grants are checked at publication. Delivery never blocks rendering. Dropped attempts leave sequence gaps and are retried while the snapshot differs. Recover by querying `status`. Subscriptions disappear on stop, revocation, restart, or disconnect.
+Snapshots reflect workspace, group membership, tab, pane, selection, and busy-state changes, including keyboard operations. Workspace entries carry optional `group_path` metadata; group membership uses the [control API contract](../README.md#workspace-groups). Groups do not grant access to their other members. The host sidebar remains host-rendered; there is no sidebar template or replacement API. Intermediate states can be coalesced. No raw keyboard input, terminal bytes, screen content, or terminal titles are emitted. Scope and grants are checked at publication. Delivery never blocks rendering. Dropped attempts leave sequence gaps and are retried while the snapshot differs. Recover by querying `status`. Subscriptions disappear on stop, revocation, restart, or disconnect.
 
 ## Private storage
 

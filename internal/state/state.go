@@ -40,10 +40,11 @@ type Tab struct {
 }
 
 type Workspace struct {
-	Name   string `json:"name"`
-	CWD    string `json:"cwd"`
-	Tabs   []Tab  `json:"tabs,omitempty"`
-	Active int    `json:"active,omitempty"`
+	GroupPath []string `json:"group_path,omitempty"`
+	Name      string   `json:"name"`
+	CWD       string   `json:"cwd"`
+	Tabs      []Tab    `json:"tabs,omitempty"`
+	Active    int      `json:"active,omitempty"`
 
 	// Legacy single-layout fields, read for states written before tabs.
 	Panes    []Pane `json:"panes,omitempty"`
