@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/patriceckhart/hrdx/internal/holder"
 )
 
 // A stub holder speaks the holder wire protocol just well enough for the
@@ -88,7 +90,9 @@ func (s *stubHolder) serve(conn net.Conn, listener net.Listener) {
 			}
 			reply, _ = json.Marshal(hello)
 		case "list":
+			s.mu.Lock()
 			reply, _ = json.Marshal(map[string]any{"req": req.Req, "sessions": s.sessions})
+			s.mu.Unlock()
 		case "shutdown":
 			s.mu.Lock()
 			s.stopped = true
@@ -168,6 +172,18 @@ func TestStopNoHolder(t *testing.T) {
 	}
 }
 
+func TestStopDialFailureIsNotNoHolder(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	statePath := filepath.Join("/", strings.Repeat("x", 250), "state.json")
+	var stdout, stderr bytes.Buffer
+	if code := stopHolder(statePath, strings.NewReader(""), &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "No session holder") {
+		t.Fatalf("reported an invalid socket as an absent holder: %q", stdout.String())
+	}
+}
+
 func TestStopDeclinesByDefault(t *testing.T) {
 	for _, answer := range []string{"", "\n", "n\n", "no\n", "x\n"} {
 		t.Run("answer="+strings.TrimSpace(answer), func(t *testing.T) {
@@ -234,6 +250,76 @@ func TestStopRefusesWhenSessionsUnlistable(t *testing.T) {
 	}
 	if stub.wasStopped() {
 		t.Fatal("unlistable holder was stopped")
+	}
+}
+
+type promptReader func([]byte) (int, error)
+
+func (f promptReader) Read(p []byte) (int, error) { return f(p) }
+
+func TestStopReleasesHolderWhilePrompting(t *testing.T) {
+	statePath := statePathFor(t)
+	stub := startStubHolder(t, statePath, map[string]any{"id": 7, "command": "shell", "running": true})
+	var stdout, stderr bytes.Buffer
+	input := promptReader(func(p []byte) (int, error) {
+		// A TUI must be able to reconnect while the user considers the prompt.
+		client, err := holder.Connect(legacySocketPaths(statePath).holder)
+		if err != nil {
+			t.Errorf("holder unavailable during prompt: %v", err)
+		} else {
+			client.Close()
+		}
+		return copy(p, "n\n"), nil
+	})
+	if code := stopHolder(statePath, input, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if stub.wasStopped() {
+		t.Fatal("declined prompt stopped holder")
+	}
+}
+
+func TestStopRefusesAttachedTUIAfterPrompt(t *testing.T) {
+	statePath := statePathFor(t)
+	stub := startStubHolder(t, statePath, map[string]any{"id": 7, "command": "shell", "running": true})
+	var attached *holder.Client
+	t.Cleanup(func() {
+		if attached != nil {
+			attached.Close()
+		}
+	})
+	var stdout, stderr bytes.Buffer
+	input := promptReader(func(p []byte) (int, error) {
+		var err error
+		attached, err = holder.Connect(legacySocketPaths(statePath).holder)
+		if err != nil {
+			t.Errorf("TUI could not reconnect during prompt: %v", err)
+		}
+		return copy(p, "y\n"), nil
+	})
+	if code := stopHolder(statePath, input, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if stub.wasStopped() {
+		t.Fatal("stopped holder with an attached TUI")
+	}
+}
+
+func TestStopRefusesChangedSessions(t *testing.T) {
+	statePath := statePathFor(t)
+	stub := startStubHolder(t, statePath, map[string]any{"id": 7, "command": "shell", "running": true})
+	var stdout, stderr bytes.Buffer
+	input := promptReader(func(p []byte) (int, error) {
+		stub.mu.Lock()
+		stub.sessions = append(stub.sessions, map[string]any{"id": 8, "command": "agent", "running": true})
+		stub.mu.Unlock()
+		return copy(p, "y\n"), nil
+	})
+	if code := stopHolder(statePath, input, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if stub.wasStopped() {
+		t.Fatal("stopped holder with newly added session")
 	}
 }
 

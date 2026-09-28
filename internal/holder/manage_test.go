@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,6 +50,20 @@ func TestManagerNoHolder(t *testing.T) {
 	}
 	if !errors.Is(err, ErrNoHolder) {
 		t.Fatalf("err = %v, want ErrNoHolder", err)
+	}
+}
+
+// TestManagerDialErrorIsNotNoHolder distinguishes invalid socket paths from
+// missing or refused sockets.
+func TestManagerDialErrorIsNotNoHolder(t *testing.T) {
+	// A path too long for a Unix socket is not evidence that no holder exists.
+	manager, err := DialManager("/"+strings.Repeat("x", 250), 200*time.Millisecond)
+	if manager != nil {
+		manager.Close()
+		t.Fatal("DialManager returned a manager for an invalid path")
+	}
+	if err == nil || errors.Is(err, ErrNoHolder) {
+		t.Fatalf("err = %v, want a dial error distinct from ErrNoHolder", err)
 	}
 }
 

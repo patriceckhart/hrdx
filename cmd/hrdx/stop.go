@@ -52,17 +52,32 @@ func stopHolder(statePath string, in io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	defer manager.Close()
-
 	sessions, err := manager.Sessions()
 	if err != nil {
+		manager.Close()
 		fmt.Fprintln(stderr, "hrdx stop: the holder is running but its sessions could not be listed:", err)
 		return 1
 	}
-	if len(sessions) > 0 && !confirmStop(in, stderr, sessions) {
-		fmt.Fprintln(stderr, "Aborted. The session holder is still running.")
-		return 1
+	if len(sessions) > 0 {
+		// Do not occupy the holder's only client slot while waiting for input.
+		manager.Close()
+		if !confirmStop(in, stderr, sessions) {
+			fmt.Fprintln(stderr, "Aborted. The session holder is still running.")
+			return 1
+		}
+		manager, err = dialHolderManager(statePath)
+		if err != nil {
+			fmt.Fprintln(stderr, "hrdx stop: could not reconnect to the holder:", err)
+			return 1
+		}
+		current, listErr := manager.Sessions()
+		if listErr != nil || !sameHeldSessions(sessions, current) {
+			manager.Close()
+			fmt.Fprintln(stderr, "hrdx stop: held sessions changed while prompting; retry to review them")
+			return 1
+		}
 	}
+	defer manager.Close()
 
 	if err := manager.Stop(); err != nil {
 		fmt.Fprintln(stderr, "hrdx stop: "+err.Error())
@@ -74,6 +89,26 @@ func stopHolder(statePath string, in io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Session holder stopped.")
 	}
 	return 0
+}
+
+// sameHeldSessions refuses to kill sessions added, removed, or changed after
+// the user reviewed the list. A process exiting does not change its session.
+func sameHeldSessions(before, after []holder.SessionInfo) bool {
+	if len(before) != len(after) {
+		return false
+	}
+	byID := make(map[int64]holder.SessionInfo, len(before))
+	for _, session := range before {
+		byID[session.ID] = session
+	}
+	for _, session := range after {
+		previous, ok := byID[session.ID]
+		if !ok || previous.Command != session.Command || previous.CWD != session.CWD {
+			return false
+		}
+		delete(byID, session.ID)
+	}
+	return len(byID) == 0
 }
 
 // confirmStop lists the held sessions and asks whether to kill them. Only a
@@ -97,7 +132,7 @@ func confirmStop(in io.Reader, stderr io.Writer, sessions []holder.SessionInfo) 
 // fallback. A busy holder is reported as-is rather than retried elsewhere.
 func dialHolderManager(statePath string) (*holder.Manager, error) {
 	manager, err := holder.DialManager(legacySocketPaths(statePath).holder, stopTimeout)
-	if err == nil || errors.Is(err, holder.ErrHolderBusy) {
+	if err == nil || !errors.Is(err, holder.ErrNoHolder) {
 		return manager, err
 	}
 	sockets, pathErr := runtimeSocketPaths(statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"))

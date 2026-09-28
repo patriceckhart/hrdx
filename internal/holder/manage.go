@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -34,7 +36,10 @@ type Manager struct {
 func DialManager(socket string, timeout time.Duration) (*Manager, error) {
 	conn, err := net.DialTimeout("unix", socket, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrNoHolder, err)
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, fmt.Errorf("%w: %v", ErrNoHolder, err)
+		}
+		return nil, fmt.Errorf("dial session holder: %w", err)
 	}
 	client := newClient(conn)
 	_ = conn.SetDeadline(time.Now().Add(timeout))
