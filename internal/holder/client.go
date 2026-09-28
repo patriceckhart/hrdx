@@ -34,6 +34,17 @@ func Connect(socket string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	client := newClient(conn)
+	if _, err := client.call(request{Op: "hello", Protocol: Protocol}); err != nil {
+		client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+// newClient wraps an established connection with a running read loop. It is
+// the shared constructor for TUI attaches and CLI management connections.
+func newClient(conn net.Conn) *Client {
 	client := &Client{
 		conn:    conn,
 		nextReq: 1,
@@ -41,11 +52,7 @@ func Connect(socket string) (*Client, error) {
 		outputs: map[int64]func([]byte){},
 	}
 	go client.readLoop()
-	if _, err := client.call(request{Op: "hello", Protocol: Protocol}); err != nil {
-		client.Close()
-		return nil, err
-	}
-	return client, nil
+	return client
 }
 
 // Spawn starts a holder process (the current binary with the holder
@@ -107,14 +114,7 @@ func dialRaw(socket string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &Client{
-		conn:    conn,
-		nextReq: 1,
-		pending: map[int64]chan response{},
-		outputs: map[int64]func([]byte){},
-	}
-	go client.readLoop()
-	return client, nil
+	return newClient(conn), nil
 }
 
 // readLoop dispatches incoming frames until the connection dies.

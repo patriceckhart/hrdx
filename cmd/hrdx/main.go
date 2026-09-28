@@ -103,6 +103,8 @@ func main() {
 		switch os.Args[1] {
 		case "plugins":
 			os.Exit(runPlugins(os.Args[2:], os.Stdout, os.Stderr))
+		case "stop":
+			os.Exit(runStop(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 		case "update":
 			var err error
 			switch {
