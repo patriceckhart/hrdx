@@ -34,6 +34,9 @@ func EncodeKey(msg tea.KeyMsg, appCursor bool) []byte {
 		}
 		return []byte{' '}
 	case tea.KeyEnter:
+		if msg.Alt {
+			return []byte{0x1b, '\r'}
+		}
 		return []byte{'\r'}
 	case tea.KeyTab:
 		return []byte{'\t'}
