@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -36,7 +37,10 @@ type Manager struct {
 func DialManager(socket string, timeout time.Duration) (*Manager, error) {
 	conn, err := net.DialTimeout("unix", socket, timeout)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+		// Windows AF_UNIX reports a missing or stale socket as Winsock's
+		// WSAECONNREFUSED (10061), not syscall.ECONNREFUSED.
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) ||
+			(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10061))) {
 			return nil, fmt.Errorf("%w: %v", ErrNoHolder, err)
 		}
 		return nil, fmt.Errorf("dial session holder: %w", err)
