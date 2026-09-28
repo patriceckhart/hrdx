@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/patriceckhart/hrdx/internal/term"
 )
 
@@ -40,6 +41,19 @@ func (h *keyboardCaptureHost) reset(target *term.Pane) {
 func (*keyboardCaptureHost) Resize(int64, int, int)  {}
 func (*keyboardCaptureHost) Kill(int64)              {}
 func (*keyboardCaptureHost) Foreground(int64) string { return "" }
+
+func TestAltEnterReachesFocusedPane(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	target := model.currentPane()
+	host := &keyboardCaptureHost{}
+	target.term = term.NewHolderPane(host, 1, 80, 24)
+	target.running = true
+
+	model.updateKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	if got, want := host.bytes(target.term), []byte{'\x1b', '\r'}; !bytes.Equal(got, want) {
+		t.Fatalf("alt+enter pane input = %q, want %q", got, want)
+	}
+}
 
 func TestEnhancedFunctionalKeysDriveLocalModes(t *testing.T) {
 	model := newTestModel("/tmp/api")

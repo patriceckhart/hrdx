@@ -108,6 +108,8 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 
 Panes whose process exits (for example `exit` in a shell) close automatically; the sibling pane takes the room. Panes that fail to start stay visible with the error.
 
+`alt+enter` reaches the focused pane with its Alt modifier when the host terminal reports it, so apps such as zot can use it to insert a newline. `shift+enter` requires the host terminal to report Shift separately from ordinary Enter; hrdx cannot recover a modifier the terminal did not send.
+
 ### Custom keys
 
 Keys are configurable via a `keys.json` next to the state file (`~/Library/Application Support/hrdx/keys.json` on macOS, `$XDG_CONFIG_HOME/hrdx/keys.json` on Linux, `%AppData%\hrdx\keys.json` on Windows). It maps action names to a single key. A prefix-action override replaces that action's default keys. The `prefix` action remaps the `ctrl+b` trigger itself, not just an action inside it. `navigate-up` and `navigate-down` add navigation keys for pickers, settings, and find while arrows and j/k remain available:
