@@ -89,6 +89,7 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `w` | New workspace (directory prompt with tab completion, then agent/shell picker) |
 | `t` | New tab in the current workspace (opens the agent/shell picker) |
 | `n` or `p` | Next / previous tab |
+| `1` through `9`, or `0` | Select that numbered tab in the current workspace (`0` selects tab 10); missing tabs leave the selection unchanged |
 | `]` or `[` | Next / previous workspace |
 | `tab` or `shift+tab` | Next / previous pane; stays in prefix mode for repeated jumps, `esc` exits |
 | `/` | Fuzzy finder over groups, workspaces, tabs, and panes: type to filter, arrows select, enter jumps |
@@ -125,7 +126,7 @@ Keys are configurable via a `keys.json` next to the state file (`~/Library/Appli
 }
 ```
 
-Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
+Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `tab-1` through `tab-9`, `tab-0`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
 
 ## Mouse
 

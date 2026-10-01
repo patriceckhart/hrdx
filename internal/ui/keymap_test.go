@@ -13,6 +13,7 @@ func TestBuildPrefixKeysDefaults(t *testing.T) {
 	for key, action := range map[string]string{
 		"c": "picker-right", "a": "agent-right", "A": "agent-down",
 		"/": "find", "b": "sidebar-toggle", "tab": "pane-next", "q": "quit",
+		"1": "tab-1", "9": "tab-9", "0": "tab-0",
 	} {
 		if keys[key] != action {
 			t.Fatalf("keys[%q] = %q, want %q", key, keys[key], action)
@@ -27,6 +28,13 @@ func TestBuildPrefixKeysOverride(t *testing.T) {
 	}
 	if keys["/"] == "find" {
 		t.Fatal("override should replace the default key")
+	}
+}
+
+func TestBuildPrefixKeysTabOverrides(t *testing.T) {
+	keys := buildPrefixKeys(map[string]string{"tab-1": "f", "find": "2"})
+	if keys["f"] != "tab-1" || keys["2"] != "find" || keys["1"] == "tab-1" || keys["0"] != "tab-0" {
+		t.Fatalf("tab overrides not applied: %v", keys)
 	}
 }
 

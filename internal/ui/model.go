@@ -1289,7 +1289,7 @@ func (m Model) navigationAction(msg tea.KeyMsg) string {
 }
 
 func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch m.prefixKeys[msg.String()] {
+	switch action := m.prefixKeys[msg.String()]; action {
 	case "literal":
 		if current := m.currentPane(); current != nil && current.term != nil {
 			current.term.Write([]byte{0x02})
@@ -1322,6 +1322,12 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectTab(1)
 	case "tab-prev":
 		m.selectTab(-1)
+	case "tab-1", "tab-2", "tab-3", "tab-4", "tab-5", "tab-6", "tab-7", "tab-8", "tab-9", "tab-0":
+		index := int(action[len("tab-")]) - int('1')
+		if index < 0 { // 0 selects the tenth tab, as in tmux.
+			index = 9
+		}
+		m.selectTabIndex(index)
 	case "space-next":
 		m.selectSpace(1)
 	case "space-prev":
@@ -3126,6 +3132,7 @@ func (m Model) prefixHintEntries() [][2]string {
 		{keys("workspace"), "workspace"},
 		{keys("tab-new"), "tab"},
 		{keys("tab-next", "tab-prev"), "tabs"},
+		{keys("tab-1", "tab-2", "tab-3", "tab-4", "tab-5", "tab-6", "tab-7", "tab-8", "tab-9", "tab-0"), "jump tab"},
 		{keys("space-next", "space-prev"), "workspaces"},
 		{keys("pane-next"), "panes"},
 		{keys("find"), "find"},
@@ -3198,9 +3205,18 @@ func (m *Model) selectTab(delta int) {
 		return
 	}
 	count := len(currentSpace.tabs)
-	currentSpace.active = (currentSpace.active + delta + count) % count
+	m.selectTabIndex((currentSpace.active + delta + count) % count)
+}
+
+func (m *Model) selectTabIndex(index int) {
+	currentSpace := m.currentSpace()
+	if currentSpace == nil || index < 0 || index >= len(currentSpace.tabs) {
+		return
+	}
+	currentSpace.active = index
 	m.resizePanes(currentSpace)
 	m.clearFocusedAttention()
+	m.persist()
 }
 
 // cyclePane moves focus through split panes in layout order, followed by

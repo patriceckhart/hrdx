@@ -76,6 +76,75 @@ func TestTabsAddAndSwitch(t *testing.T) {
 	}
 }
 
+func TestPrefixSelectTabByNumber(t *testing.T) {
+	model := newTestModel("/tmp/api", "/tmp/web")
+	model.statePath = filepath.Join(t.TempDir(), "state.json")
+	currentSpace := model.spaces[0]
+	for len(currentSpace.tabs) < 11 {
+		model.addTab(currentSpace, "zot")
+	}
+	currentSpace.active = 0
+
+	for _, tc := range []struct {
+		key  rune
+		want int
+	}{
+		{'3', 2}, {'0', 9}, {'9', 8}, {'1', 0}, {'2', 1},
+	} {
+		updated, _ := model.updateKey(tea.KeyMsg{Type: tea.KeyCtrlB})
+		model = updated.(Model)
+		updated, _ = model.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{tc.key}})
+		model = updated.(Model)
+		if currentSpace.active != tc.want || model.mode != modeTerminal {
+			t.Fatalf("prefix %c: active = %d, mode = %d, want %d and terminal", tc.key, currentSpace.active, model.mode, tc.want)
+		}
+		saved, err := state.Load(model.statePath)
+		if err != nil || saved.Workspaces[0].Active != tc.want {
+			t.Fatalf("prefix %c: saved active = %d, err = %v, want %d", tc.key, saved.Workspaces[0].Active, err, tc.want)
+		}
+	}
+	if model.spaces[1].active != 0 {
+		t.Fatalf("other workspace active = %d, want 0", model.spaces[1].active)
+	}
+}
+
+func TestPrefixSelectTabWithCustomKey(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	currentSpace := model.spaces[0]
+	model.addTab(currentSpace, "zot")
+	model.prefixKeys = buildPrefixKeys(map[string]string{"tab-1": "f", "find": "2"})
+
+	for _, tc := range []struct {
+		key  rune
+		want int
+	}{
+		{'1', 1}, // The default key no longer selects the first tab.
+		{'f', 0},
+	} {
+		updated, _ := model.updateKey(tea.KeyMsg{Type: tea.KeyCtrlB})
+		model = updated.(Model)
+		updated, _ = model.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{tc.key}})
+		model = updated.(Model)
+		if currentSpace.active != tc.want {
+			t.Fatalf("prefix %c: active = %d, want %d", tc.key, currentSpace.active, tc.want)
+		}
+	}
+}
+
+func TestPrefixSelectMissingTabDoesNothing(t *testing.T) {
+	model := newTestModel("/tmp/api")
+	model.addTab(model.spaces[0], "zot")
+	for _, key := range []rune{'3', '0'} {
+		updated, _ := model.updateKey(tea.KeyMsg{Type: tea.KeyCtrlB})
+		model = updated.(Model)
+		updated, _ = model.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		model = updated.(Model)
+		if model.spaces[0].active != 1 || model.mode != modeTerminal {
+			t.Fatalf("prefix %c: active = %d, mode = %d, want 1 and terminal", key, model.spaces[0].active, model.mode)
+		}
+	}
+}
+
 func TestTabHit(t *testing.T) {
 	model := newTestModel("/tmp/api")
 	currentSpace := model.spaces[0]
