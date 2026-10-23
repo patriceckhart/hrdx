@@ -15,6 +15,7 @@ import (
 	"github.com/patriceckhart/hrdx/internal/continuous"
 	"github.com/patriceckhart/hrdx/internal/continuous/continuoustest"
 	"github.com/patriceckhart/hrdx/internal/state"
+	"github.com/patriceckhart/hrdx/internal/term"
 )
 
 // durableHost is a fake host with workspace roots, snapshots, and a
@@ -774,5 +775,76 @@ func TestDurableViewByIDNeedsCapableZot(t *testing.T) {
 	}
 	if len(host.Requests("conversation.snapshot")) != 0 {
 		t.Fatal("contacted the host although zot cannot attach by ID")
+	}
+}
+
+// Program status reports and screen spinners must never decide the busy
+// state of a durable view: only the host does.
+func TestDurableBusyIgnoresProgramStatusReports(t *testing.T) {
+	host := newDurableHost()
+	model := newDurableModel(t, host)
+	owner := model.spaces[0]
+	target, _ := model.addDurablePane(owner, nil, "right")
+	model = drive(t, model, model.prepareDurable(owner, target))
+	target.term = term.NewHolderPane(nil, 1, 80, 24)
+	target.running = true
+	target.term.Feed([]byte("\x1b]7501;state=working:app=zot\x1b\\⠋ Working"))
+	if model.paneBusy(target) {
+		t.Fatal("a durable view reported busy from its screen instead of the host")
+	}
+	host.setRun(target.durable.Conversation, "tools", "")
+	model.durablePolling = false
+	model = drive(t, model, model.pollDurable())
+	target.term.Feed([]byte("\x1b]7501;state=idle:app=zot\x1b\\"))
+	if !model.paneBusy(target) {
+		t.Fatal("an idle report overrode the host's running state")
+	}
+}
+
+// A folded workspace summary must reflect authoritative durable state.
+func TestFoldSummaryUsesDurableHostState(t *testing.T) {
+	host := newDurableHost()
+	model := newDurableModel(t, host)
+	model.foldEnabled = true
+	owner := model.spaces[0]
+	target, _ := model.addDurablePane(owner, nil, "right")
+	model = drive(t, model, model.prepareDurable(owner, target))
+	host.setRun(target.durable.Conversation, "tools", "")
+	model.durablePolling = false
+	model = drive(t, model, model.pollDurable())
+	owner.folded = true
+	summary, _ := model.foldSummary(owner)
+	if !strings.Contains(summary, spinnerFrames[model.spinFrame%len(spinnerFrames)]) {
+		t.Fatalf("folded summary %q does not show the running durable agent", summary)
+	}
+}
+
+// Every additive field from the merged features survives one round trip.
+func TestMergedStateFieldsRoundTrip(t *testing.T) {
+	host := newDurableHost()
+	model := newDurableModel(t, host)
+	owner := model.spaces[0]
+	target, _ := model.addDurablePane(owner, nil, "right")
+	model = drive(t, model, model.prepareDurable(owner, target))
+	model.sideWidth, model.splitDirection, model.foldEnabled, model.subrepoDepth = 40, splitDirAuto, true, 2
+	owner.folded = true
+	owner.hiddenSubrepos = map[string]bool{"lib/x": true}
+	model.durableMuted["host"] = true
+	data, err := json.Marshal(model.snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved state.State
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	restored := New(Config{Shell: "/bin/sh"}, nil, "", saved)
+	space := restored.spaces[0]
+	if restored.sideWidth != 40 || restored.splitDirection != splitDirAuto || !restored.foldEnabled ||
+		restored.subrepoDepth != 2 || !space.folded || !space.hiddenSubrepos["lib/x"] ||
+		!restored.durableMuted["host"] || space.host != "ext" || len(space.durables) != 1 {
+		t.Fatalf("restored = width %d split %q fold %v depth %d folded %v hidden %v muted %v host %q durables %d",
+			restored.sideWidth, restored.splitDirection, restored.foldEnabled, restored.subrepoDepth,
+			space.folded, space.hiddenSubrepos, restored.durableMuted, space.host, len(space.durables))
 	}
 }
