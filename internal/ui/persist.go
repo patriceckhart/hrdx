@@ -8,7 +8,7 @@ func (m *Model) snapshot() state.State {
 		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
 		SidebarCollapsed: m.sideCollapsed, SidebarWidth: m.sideWidth,
-		SplitDirection: m.splitDirection,
+		SplitDirection: m.splitDirection, WorkspaceFolding: m.foldEnabled,
 	}
 	for _, category := range durableCategories {
 		if m.durableMuted[category] {
@@ -28,6 +28,7 @@ func (m *Model) snapshot() state.State {
 			Active:     currentSpace.active,
 			Host:       currentSpace.host,
 			Continuous: append([]state.DurableRef(nil), currentSpace.durables...),
+			Folded:     currentSpace.folded,
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -87,7 +88,7 @@ func (m *Model) restore(saved state.State) {
 		if ws.CWD == "" || len(savedTabs) == 0 {
 			continue
 		}
-		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active, host: ws.Host}
+		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active, host: ws.Host, folded: ws.Folded}
 		for _, ref := range ws.Continuous {
 			if ref.Valid() {
 				associate(restored, ref)

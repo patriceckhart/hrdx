@@ -140,6 +140,10 @@ Local scrollback stops at the oldest available line; further upward wheel events
 
 Sidebar context menus follow the clicked row: workspace names and Git branch rows offer workspace actions; the first pane row of each tab in a multi-tab workspace offers tab actions; other pane rows offer pane actions. Closing a tab leaves the workspace and its other tabs intact. The final tab cannot be closed through the tab menu, and pane menus omit Close for a tab's last pane. To close the entire workspace, use its workspace menu or the workspace-close key binding. Blank rows and dividers do not change focus. Custom socket menu entries follow the same scopes (`sidebar`, `tab`, or `pane`). If automation removes a menu or tab-picker target before selection, its stale action is dismissed instead of acting on the newly focused workspace or creating an invisible pane.
 
+### Folding workspaces
+
+Turn on **allow folding workspaces in the sidebar** under the terminal tab in settings (off by default, saved as `workspace_folding`). Each workspace name in the expanded sidebar then ends in a `▾` toggle. Clicking it, or choosing **Collapse** from the workspace context menu, folds the workspace to its name row; `▸` and **Expand** bring the branch, tab, and pane rows back. A folded row summarizes its panes: a spinner while any agent is working, an orange `●` when one finished unseen, and the pane count. Folding is purely visual: panes keep running, and keys, the finder, and the socket API still reach them. The fold is saved per workspace as the optional `folded` field. Turning the setting off shows every workspace expanded and removes the toggles and menu entries, but keeps each workspace's fold for when it is turned on again. The compact sidebar has no fold toggles and always shows one row per workspace.
+
 ## Remote and container panes
 
 Every pane is a real PTY, so a shell pane can connect to a remote host, Docker container, or Kubernetes workload. For an interactive shell:

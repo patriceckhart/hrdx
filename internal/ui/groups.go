@@ -93,6 +93,15 @@ func (m Model) groupSidebarRows(flat []sidebarRow) []sidebarRow {
 		indent := strings.Repeat(" ", min(depth*2, max(0, width/3)))
 		if node.space >= 0 {
 			for _, row := range blocks[node.space] {
+				if row.fold {
+					// Re-render narrower so the fold toggle keeps its place
+					// at the right edge instead of being truncated away.
+					rail := ansi.Cut(row.label, 0, 1)
+					named := m.spaceNameRow(node.space, rail, width-len(indent))
+					named.label = rail + indent + ansi.Cut(named.label, 1, ansi.StringWidth(named.label))
+					rows = append(rows, named)
+					continue
+				}
 				rail := ansi.Cut(row.label, 0, 1)
 				content := ansi.Cut(row.label, 1, ansi.StringWidth(row.label))
 				row.label = ansi.Truncate(rail+indent+content, width, "…")

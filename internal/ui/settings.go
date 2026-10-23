@@ -77,7 +77,10 @@ func (m Model) settingsRows() []settingsRow {
 		}
 		return rows
 	case 3: // terminal
-		rows := []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows := []settingsRow{
+			{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"},
+			{settingsCheck(m.foldEnabled) + "allow folding workspaces in the sidebar", "workspace-folding"},
+		}
 		rows = append(rows, settingsRow{"default split direction:", ""})
 		for _, value := range splitDirections {
 			mark := "( ) "
@@ -152,6 +155,12 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		m.splitDirection = validSplitDirection(value)
 		m.persist()
 		return nil
+	}
+	if row.action == "workspace-folding" {
+		// Folds stay saved while the option is off and return with it.
+		m.foldEnabled = !m.foldEnabled
+		m.sideScroll = 0
+		m.persist()
 	}
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy
