@@ -95,6 +95,7 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `/` | Fuzzy finder over groups, workspaces, tabs, and panes: type to filter, arrows select, enter jumps |
 | `b` | Collapse or expand the workspace sidebar |
 | `P` | Open experimental plugin lifecycle controls |
+| `D` | Open the durable agents panel for the current workspace (see [Durable agents](#durable-agents)) |
 | `r` | Rename the focused pane |
 | `m` | Open the pane context menu |
 | `=` | Equalize all splits |
@@ -297,6 +298,39 @@ Plugins stop with the TUI using bounded graceful shutdown and platform-specific 
 
 The [plugin protocol and manifest reference](docs/plugin-platform.md) documents methods, grants, limits, compatibility, and remaining work. The platform is experimental, independently versioned, and does not claim zot wire compatibility.
 
+## Durable agents
+
+Experimental. Durable agents run on a [zot continuous](https://www.zot.sh) host instead of inside the pane. The pane is a real PTY running zot's attached TUI as a view of one conversation. The host owns execution, queues, approvals, and recovery, so the work continues when the view closes, when hrdx quits, or when the holder restarts. Everything else keeps working as before: ordinary agents and shells, holder persistence, and resume behavior are unchanged, and durable and ordinary panes can share a workspace, tab, and split layout.
+
+Create one by picking `zot (durable)` at the end of any agent picker (`ctrl+b c`, `ctrl+b t`, the tab bar `+`, or a split menu). It is never the preselected entry, and no existing default turns durable on its own. The first durable agent in a project starts a managed host for that project in the background, with a private store under `continuous/` next to the state file. Each further durable agent in the workspace gets its own conversation. "Open another view" in the pane menu, or the panel, shows the same conversation again.
+
+`ctrl+b D` opens the durable agents panel for the current workspace: every associated conversation with its state and number of open views, even with no pane open, plus actions to open a view, queue or steer a prompt, rename, review pending approvals (allow this call, allow this tool for the conversation, or deny), review recovery holds, show usage, list tasks with abort or cleanup retry, list forks and owned subagents with open view, prompt, and abort actions, show and set the conversation cost budget, change the model (`provider/model`, other configuration such as instructions and tool restrictions is preserved), explicitly abort work, forget a conversation locally (host history is kept), and start or stop managed hosts. Destructive actions ask first. The settings window gains a `durable` section to mute individual notification categories (finished, failed, approval, recovery, host) and pick the host for new durable agents in the current workspace; muting silences sound and notices but keeps the attention dot. The sidebar shows authoritative host state for durable panes: the busy spinner while the host runs work, `queued`, `approve`, `recover`, `failed`, or `offline` when the host cannot be reached. A disconnected host never reads as idle or finished. Finished turns, failures, approval requests, recovery holds, and lost hosts use the notification settings, once per transition, never for history seen at startup.
+
+Lifetime rules:
+
+- Closing a durable pane, tab, or workspace ends only the attached view. It never aborts host work or stops a host. Aborting is an explicit panel or API action.
+- Quitting hrdx detaches views like any held pane. Managed hosts keep running independently of the TUI and the holder; `hrdx stop` still manages only the holder.
+- On restart each durable pane reattaches to its exact conversation. If the host is missing, the conversation is gone, or the host workspace key now resolves to a different conversation (another store), the pane stays visible with the error instead of starting a fresh agent. "Retry durable binding" in the pane menu tries again.
+- A managed host stopped on purpose is not restarted when hrdx reopens; start it from the panel or with `hrdx continuous start`. hrdx never restarts a crashed host in a loop; zot performs its own recovery when the host starts.
+- Prompts submitted from hrdx carry a stable request ID. A lost response is reported as unknown, never resubmitted under a new ID.
+
+Manage host profiles without starting the TUI. Profiles live in `continuous-hosts.json` next to the state file; tokens are referenced by file and never copied into state, status output, or logs.
+
+```sh
+hrdx continuous hosts                                   # profiles and whether they answer (--json)
+hrdx continuous add --id team --address /path/to/host.sock [--token-file FILE]
+hrdx continuous add --id remote --address host.example:7000 --tls-ca ca.pem --token-file token
+hrdx continuous start --id local-1a2b3c4d5e6f           # managed hosts only
+hrdx continuous stop --id local-1a2b3c4d5e6f            # interrupted work stays recoverable
+hrdx continuous remove --id team                        # the host and its history are untouched
+```
+
+An added external host can be selected per workspace from the panel ("Use host for new durable agents") or with `continuous.workspace_host`. Existing panes keep their binding when the selection changes.
+
+Remote hosts (`host:port`, served by `zot continuous serve --listen`) require TLS 1.3 against the profile's CA bundle and a token; plaintext TCP is accepted only on loopback. Managed hosts are always local. On native Windows the profile's socket path maps to the same private named pipe zot derives, and a stopped managed host is terminated rather than interrupted (zot keeps the interrupted work recoverable either way).
+
+Limitations: durable agents need zot with `zot continuous` and a state location (not `--state ""`). Forks and owned subagents have no workspace key; their views attach by conversation ID, which needs a zot whose `--help` lists `--continuous-conversation`. With an older zot such a view reports "update zot" and nothing else changes. Native prompts attach local files with `@path` tokens (relative to the workspace; `@@` keeps a literal `@`): UTF-8 text and PNG, JPEG, GIF, or WebP images, at most 16 files and 1 MiB per prompt, sent only to hosts that advertise attachment support. Older hrdx releases ignore the durable fields and would relaunch such panes as ordinary zot, so back up the state file before downgrading.
+
 ## Socket API
 
 While hrdx runs it serves a control API on a Unix socket next to the state file (`hrdx.sock`), so scripts, editors, and coding agents can inspect and drive a running session. Disable with `--api=false`. The session holder uses `holder.sock` in the same directory.
@@ -343,9 +377,38 @@ echo '{"id": "7", "method": "menu.register", "params": {"target": "pane", "label
 | `plugins.status` | Inspect experimental plugin lifecycle states, requires `--plugins` |
 | `plugins.control` | Request `start`, `stop`, `restart`, or explicitly reapproved `reload` for a plugin (`plugin`, `action`), requires `--plugins` |
 
+Durable agent methods are separate from pane input: `pane.send_text` types into a view, `continuous.submit` admits work to a conversation. They answer after a host round trip that never blocks the UI (up to 45 seconds when a managed host must start). Host error codes such as `conflict`, `busy`, `queue_full`, `not_found`, and `unauthorized` pass through unchanged; `unavailable` means the host could not be reached and `unsupported` means the platform lacks local hosts.
+
+| Method | Effect |
+|---|---|
+| `continuous.hosts` | Host profiles with `managed`, `connection`, and intentional `stopped` state |
+| `continuous.host.start` / `continuous.host.stop` | Start or stop a managed host (`profile`) |
+| `continuous.workspace_host` | Host profile for new durable panes in a workspace (`workspace`, `profile`; empty restores the managed host) |
+| `continuous.attach` | Open a durable view (`workspace`, optional `profile`, `split`: `right`, `down`, `tab`). Without `conversation` it creates a new durable agent; with one, another view of it (unassociated conversations also need `profile`; without `workspace_key` the view attaches by conversation ID, for forks and subagents). Answers once bound, with `pane_id` |
+| `continuous.list` | Conversations on a host (`profile`, optional `after`, `limit`) |
+| `continuous.snapshot` | Execution state, queue, run, approvals, recovery, tasks, and usage (`profile`, `conversation`) |
+| `continuous.submit` | Admit a prompt (`profile`, `conversation`, `content`, required `request_id`, `policy`: `queue` or `steer`, optional `files`: local paths read by hrdx, relative to the selected workspace). Retrying with the same `request_id` returns the original submission |
+| `continuous.submission` | Read one submission (`profile`, `submission`) |
+| `continuous.rename` | Set a title (`profile`, `conversation`, `expected_revision`, `title`) |
+| `continuous.abort` | Explicitly abort active work and withdraw queued prompts (`profile`, `conversation`) |
+| `continuous.approvals` / `continuous.decide` | List pending approvals, or decide one (`approval`, `allow`, `scope`: `call` or `tool`, optional `reason`) |
+| `continuous.recovery` / `continuous.unblock` | Preview interrupted runs, or release one hold (`run_id`) so the host applies its recovery plan |
+| `continuous.tasks` | Host tasks of a conversation (`profile`, `conversation`) |
+| `continuous.task.abort` / `continuous.task.retry_cleanup` | Abort one task (`task`, optional `include_background`), or retry its failed cleanup |
+| `continuous.budgets` | Budgets that apply to a conversation, with spend and `exceeded` |
+| `continuous.budget.set` | Write a budget (`scope`: `runtime` or `conversation`, `conversation`, `limit_usd`, `limit_tokens`, `reserve_usd`, `window_seconds`, `expected_revision`) |
+| `continuous.configure` | Change `provider`, `model`, or `reasoning` of a conversation; empty fields and all other configuration are kept |
+
+```sh
+echo '{"id": "8", "method": "continuous.attach", "params": {"workspace": "api", "split": "tab"}}' | nc -U "$SOCK"
+echo '{"id": "9", "method": "continuous.submit", "params": {"profile": "local-1a2b3c4d5e6f", "conversation": "<id>", "content": "run the tests", "request_id": "ci-42"}}' | nc -U "$SOCK"
+```
+
+`status` marks durable panes with `"mode": "durable"` and a `durable` object (`profile`, `workspace_key`, `conversation`, `title`, `connection`: `connected`, `disconnected`, or `unknown`, `execution`: `ready`, `queued`, `running`, `approval`, `recovery`, `failed`, or `aborted`, `revision`, `observed_at`, `queued`, `approvals`, and `error`). While disconnected, `execution` is the last observed value. Workspaces add `continuous_host` and a `continuous` list of associated conversations with their open `views`. Ordinary panes omit these fields, and `busy` keeps its meaning.
+
 Successful responses are `{"id": "...", "result": {...}}`; failures are `{"id": "...", "error": {"code": "not_found", "message": "..."}}` with codes `not_found`, `invalid_params`, `unknown_method`, `timeout`, and `error`.
 
-After `events.subscribe` the connection stays open and hrdx pushes lines like `{"event": "pane.busy_changed", "data": {"pane_id": 3, "busy": false}}`. Events: `workspace.created`, `workspace.closed`, `workspace.moved`, `pane.created`, `pane.closed`, `pane.busy_changed`, and `menu.action`, so a script can react the moment an agent finishes instead of polling.
+After `events.subscribe` the connection stays open and hrdx pushes lines like `{"event": "pane.busy_changed", "data": {"pane_id": 3, "busy": false}}`. Events: `workspace.created`, `workspace.closed`, `workspace.moved`, `pane.created`, `pane.closed`, `pane.busy_changed`, `menu.action`, `continuous.bound` (a durable pane was bound to a conversation), `continuous.state_changed` (`profile`, `conversation`, `state`, `previous`), and `continuous.host_changed` (`profile`, `connected`, `error`), so a script can react the moment an agent finishes instead of polling.
 
 A `menu.register` entry appears after the built-in actions in the requested context menu. Selecting it publishes `{"event":"menu.action","data":{"action_id":"custom.run_linter","target":"pane","pane_id":3,"workspace":"api","path":"/path/to/api","tab_index":0}}`. Registrations are ephemeral, re-registering an `action_id` replaces it, and events use the API's existing best-effort delivery for slow subscribers.
 

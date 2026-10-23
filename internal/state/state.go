@@ -19,6 +19,30 @@ type Pane struct {
 	// the pane was not holder-backed. On restore hrdx reattaches to the
 	// session instead of starting a new process.
 	Session int64 `json:"session,omitempty"`
+
+	// Durable binds the pane as a view of a zot continuous conversation.
+	// Nil, the zero value, is an ordinary terminal pane, so state written
+	// before durable execution existed keeps its meaning.
+	Durable *DurableRef `json:"durable,omitempty"`
+}
+
+// DurableRef identifies one conversation on a continuous host. Profile names
+// a host profile from continuous-hosts.json; credentials are never stored
+// here. Workspace is the host workspace key the attached zot view opens,
+// and Conversation is the ID the key resolved to when it was bound. A
+// mismatch on restore means a different store and is never attached.
+// Forks and owned subagents have no workspace key: an empty Workspace
+// means the view attaches by Conversation ID.
+type DurableRef struct {
+	Profile      string `json:"profile"`
+	Workspace    string `json:"workspace"`
+	Conversation string `json:"conversation"`
+	Title        string `json:"title,omitempty"`
+}
+
+// Valid reports whether every identity field is present.
+func (r DurableRef) Valid() bool {
+	return r.Profile != "" && r.Conversation != ""
 }
 
 // Node mirrors the split tree. Leaf nodes reference a pane by its index in
@@ -45,6 +69,15 @@ type Workspace struct {
 	CWD       string   `json:"cwd"`
 	Tabs      []Tab    `json:"tabs,omitempty"`
 	Active    int      `json:"active,omitempty"`
+
+	// Continuous lists durable conversations associated with the workspace,
+	// whether or not a pane currently views them. Removing an entry never
+	// deletes host history.
+	Continuous []DurableRef `json:"continuous,omitempty"`
+
+	// Host is the host profile new durable panes use. Empty selects the
+	// project's managed host. Existing bindings never follow a change.
+	Host string `json:"continuous_host,omitempty"`
 
 	// Legacy single-layout fields, read for states written before tabs.
 	Panes    []Pane `json:"panes,omitempty"`
@@ -77,6 +110,10 @@ type State struct {
 	// SidebarCollapsed remembers whether the workspace sidebar is compact.
 	// Its zero value keeps older state files expanded.
 	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+
+	// DurableMuted lists durable notification categories the user turned
+	// off: finished, failed, approval, recovery, host. Empty notifies all.
+	DurableMuted []string `json:"durable_muted,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.

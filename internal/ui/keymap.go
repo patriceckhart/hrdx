@@ -49,6 +49,8 @@ var defaultPrefixKeys = map[string][]string{
 	"rename":         {"r"},
 	"menu":           {"m"},
 	"settings":       {","},
+	"continuous":     {"D"},
+	"durable-right":  {},
 	"plugins":        {"P"},
 	"sidebar-toggle": {"b"},
 	"scroll-up":      {"u", "pgup"},

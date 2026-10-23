@@ -21,6 +21,10 @@ func (m *Model) handleAPI(request api.Request) tea.Cmd {
 	}
 	ok := func(data any) { answer(data, "", "") }
 
+	if api.IsContinuousMethod(request.Method) {
+		return m.handleContinuousAPI(request)
+	}
+
 	switch request.Method {
 	case "plugins.status", "plugins.control":
 		return m.handlePluginAPI(request)
@@ -289,11 +293,25 @@ func (m *Model) apiStatus() api.Status {
 	status := api.Status{Type: "status", Version: m.config.Version}
 	for spaceIndex, currentSpace := range m.spaces {
 		ws := api.WorkspaceStatus{
-			GroupPath: append([]string(nil), currentSpace.groupPath...),
-			Name:      currentSpace.name,
-			Path:      currentSpace.cwd,
-			Selected:  spaceIndex == m.selected,
-			Branch:    m.gitBranch(currentSpace.cwd).value,
+			GroupPath:      append([]string(nil), currentSpace.groupPath...),
+			Name:           currentSpace.name,
+			Path:           currentSpace.cwd,
+			Selected:       spaceIndex == m.selected,
+			Branch:         m.gitBranch(currentSpace.cwd).value,
+			ContinuousHost: currentSpace.host,
+		}
+		views := map[string]int{}
+		for _, currentTab := range currentSpace.tabs {
+			for _, currentPane := range currentTab.panes {
+				if ref := currentPane.durable; ref != nil {
+					views[durableKey(ref.Profile, ref.Conversation)]++
+				}
+			}
+		}
+		for _, ref := range currentSpace.durables {
+			status := m.durableStatus(ref)
+			status.Views = views[durableKey(ref.Profile, ref.Conversation)]
+			ws.Continuous = append(ws.Continuous, *status)
 		}
 		for tabIndex, currentTab := range currentSpace.tabs {
 			tabStatus := api.TabStatus{
@@ -308,6 +326,13 @@ func (m *Model) apiStatus() api.Status {
 					Running: currentPane.running,
 					Busy:    m.paneBusy(currentPane),
 					Failure: currentPane.failure,
+				}
+				if ref := currentPane.durable; ref != nil {
+					paneStatus.Mode = "durable"
+					paneStatus.Durable = m.durableStatus(*ref)
+					if currentPane.failure != "" {
+						paneStatus.Durable.Error = currentPane.failure
+					}
 				}
 				if placement := currentPane.floating; placement != nil {
 					paneStatus.Floating = true

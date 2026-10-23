@@ -105,6 +105,8 @@ func main() {
 			os.Exit(runPlugins(os.Args[2:], os.Stdout, os.Stderr))
 		case "stop":
 			os.Exit(runStop(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+		case "continuous":
+			os.Exit(runContinuous(os.Args[2:], os.Stdout, os.Stderr))
 		case "update":
 			var err error
 			switch {

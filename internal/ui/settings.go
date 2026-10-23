@@ -22,10 +22,14 @@ var settingsTabNames = []string{"agents", "notification", "theme", "terminal"}
 // settingsTabs adds the plugins section only when the runtime is enabled so
 // the window is unchanged for users who never opted in.
 func (m Model) settingsTabs() []string {
-	if m.plugins == nil {
-		return settingsTabNames
+	tabs := append([]string{}, settingsTabNames...)
+	if m.durableAvailable() {
+		tabs = append(tabs, "durable")
 	}
-	return append(append([]string{}, settingsTabNames...), "plugins")
+	if m.plugins != nil {
+		tabs = append(tabs, "plugins")
+	}
+	return tabs
 }
 
 func settingsCheck(on bool) string {
@@ -74,7 +78,10 @@ func (m Model) settingsRows() []settingsRow {
 		return rows
 	case 3: // terminal
 		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
-	case 4: // plugins
+	case 4, 5:
+		if tabs := m.settingsTabs(); m.settingsTab < len(tabs) && tabs[m.settingsTab] == "durable" {
+			return m.durableSettingsRows()
+		}
 		return m.pluginSettingsRows()
 	default: // agents
 		installed := map[string]bool{}
@@ -138,6 +145,16 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 	}
 	if strings.HasPrefix(row.action, "plugin-") {
 		return m.togglePluginSetting(row.action)
+	}
+	if category, ok := strings.CutPrefix(row.action, "durable-notify:"); ok {
+		m.durableMuted[category] = !m.durableMuted[category]
+		m.persist()
+	}
+	if id, ok := strings.CutPrefix(row.action, "durable-host:"); ok {
+		if owner := m.currentSpace(); owner != nil {
+			owner.host = id
+			m.persist()
+		}
 	}
 	return nil
 }

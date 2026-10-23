@@ -152,6 +152,11 @@ type PaneStatus struct {
 	Anchor    string `json:"anchor,omitempty"`
 	WidthPct  int    `json:"width_pct,omitempty"`
 	HeightPct int    `json:"height_pct,omitempty"`
+
+	// Mode is "durable" for zot continuous views; omitted for ordinary
+	// panes. Busy keeps its meaning; Durable carries authoritative state.
+	Mode    string         `json:"mode,omitempty"`
+	Durable *DurableStatus `json:"durable,omitempty"`
 }
 
 // TabStatus describes one tab in a status reply.
@@ -169,6 +174,11 @@ type WorkspaceStatus struct {
 	Selected  bool        `json:"selected"`
 	Branch    string      `json:"branch,omitempty"`
 	Tabs      []TabStatus `json:"tabs"`
+
+	// ContinuousHost is the explicit host profile for new durable panes.
+	// Continuous lists associated conversations, with or without views.
+	ContinuousHost string          `json:"continuous_host,omitempty"`
+	Continuous     []DurableStatus `json:"continuous,omitempty"`
 }
 
 // Status is the full state snapshot returned by the status method.

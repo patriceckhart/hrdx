@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/continuous"
 	"github.com/patriceckhart/hrdx/internal/holder"
 	"github.com/patriceckhart/hrdx/internal/plugin"
 	"github.com/patriceckhart/hrdx/internal/state"
@@ -46,6 +47,7 @@ const (
 	modeSettings
 	modeFind
 	modePluginView
+	modeDurablePrompt
 )
 
 // menuItem is one entry of the right-click context menu.
@@ -101,6 +103,12 @@ type pane struct {
 	resume   bool  // restored agent pane: relaunch resuming its session
 	session  int64 // holder session to reattach to on restore, 0 = start fresh
 	floating *floatPlacement
+
+	// durable binds the pane as a view of a zot continuous conversation;
+	// nil for ordinary panes. durableReady is set once the binding was
+	// verified on the host in this process.
+	durable      *state.DurableRef
+	durableReady bool
 }
 
 // tab is one tabbed layout of panes inside a workspace.
@@ -117,6 +125,9 @@ type space struct {
 	cwd       string
 	tabs      []*tab
 	active    int
+
+	host     string             // host profile for new durable panes, "" = managed default
+	durables []state.DurableRef // durable conversations associated with the workspace
 }
 
 // tab returns the active tab, never nil for a live workspace.
@@ -209,6 +220,18 @@ type Model struct {
 	pluginPanes         map[int]pluginPaneOwner // temporary floating panes owned by a plugin generation
 	providerQuery       string                  // last finder query sent to providers
 	providerRows        []providerCandidate     // provider results for providerQuery
+
+	// Durable execution through zot continuous hosts. Shared maps and the
+	// pool are references, so value copies of the model share them.
+	profiles        map[string]continuous.Profile
+	cpool           *continuous.Pool
+	hostState       map[string]*hostInfo
+	durState        map[string]*durableInfo
+	durableTicking  bool
+	durablePolling  bool
+	prompt          *durablePrompt
+	pendingAttaches []pendingAttach
+	durableMuted    map[string]bool // durable notification categories turned off
 }
 
 // pluginPaneOwner ties a temporary pane to the plugin connection that created
@@ -290,6 +313,12 @@ func (m Model) menuItems() []menuItem {
 		if owner := m.tabByPaneID(m.menuPane.id); owner != nil && len(owner.panes) == 1 {
 			builtins = paneMenuItems[:len(paneMenuItems)-1]
 		}
+		if m.menuPane.durable != nil {
+			builtins = append(append([]menuItem{}, builtins...), menuItem{"Open another view", "pane-durable-view"})
+			if m.menuPane.failure != "" {
+				builtins = append(builtins, menuItem{"Retry durable binding", "pane-durable-retry"})
+			}
+		}
 	}
 
 	items := append([]menuItem{}, builtins...)
@@ -363,6 +392,11 @@ func (m *Model) clearFocusedAttention() {
 // transition it schedules a debounced completion confirmation and notifies
 // API subscribers of the state change.
 func (m *Model) trackBusy(target *pane) tea.Cmd {
+	if target.durable != nil {
+		// Durable completion comes from host state transitions in
+		// applyDurablePoll, which also deduplicates across views.
+		return nil
+	}
 	if m.paneBusy(target) {
 		if !m.wasBusy[target.id] {
 			m.soundSeq[target.id]++
@@ -464,13 +498,24 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		soundKind: saved.SoundKind, notifyOn: saved.Notify, themeName: saved.Theme,
 		autoCopy: !saved.DisableAutoCopy, clipboardCopy: copyToClipboard,
 		sideCollapsed: saved.SidebarCollapsed,
-		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
+		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides,
+		profiles: map[string]continuous.Profile{}, cpool: continuous.NewPool(nil),
+		hostState: map[string]*hostInfo{}, durState: map[string]*durableInfo{}, durableMuted: map[string]bool{}}
+	for _, category := range saved.DurableMuted {
+		if slices.Contains(durableCategories, category) {
+			model.durableMuted[category] = true
+		}
+	}
 	model.prefixTrigger = model.primaryKey("prefix")
 	if statePath != "" {
-		for _, problem := range []string{
+		profiles, profileProblems := continuous.LoadProfiles(filepath.Dir(statePath))
+		for _, profile := range profiles {
+			model.profiles[profile.ID] = profile
+		}
+		for _, problem := range append([]string{
 			loadSounds(filepath.Dir(statePath)),
 			loadThemes(filepath.Dir(statePath)),
-		} {
+		}, profileProblems...) {
 			if problem == "" {
 				continue
 			}
@@ -618,7 +663,7 @@ func checkForUpdate(cacheDir, version string) tea.Cmd {
 
 func (m Model) Init() tea.Cmd {
 	var commands []tea.Cmd
-	commands = append(commands, checkForUpdate(m.config.CacheDir, m.config.Version), waitPluginEvent(m.plugins))
+	commands = append(commands, checkForUpdate(m.config.CacheDir, m.config.Version), waitPluginEvent(m.plugins), durableKick)
 	m.gcHolderSessions()
 	for _, currentSpace := range m.spaces {
 		for _, currentTab := range currentSpace.tabs {
@@ -630,7 +675,21 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
-func (m Model) startPane(owner *space, target *pane) tea.Cmd {
+func (m *Model) startPane(owner *space, target *pane) tea.Cmd {
+	if target.durable != nil && !target.durableReady {
+		if target.failure != "" {
+			// A restored binding that cannot be used is reported, never
+			// replaced. Retrying is an explicit user action.
+			return nil
+		}
+		// Verify or create the binding first; durablePreparedMsg starts the
+		// view. A failure keeps the pane with its error and the binding.
+		return m.prepareDurable(owner, target)
+	}
+	return m.startPTY(owner, target)
+}
+
+func (m Model) startPTY(owner *space, target *pane) tea.Cmd {
 	// Before the first WindowSizeMsg the layout collapses to the minimum
 	// pane size; starting PTYs at 8x2 makes TUIs render wrapped garbage.
 	// Keep the 80x24 default until the real size is known.
@@ -647,7 +706,14 @@ func (m Model) startPane(owner *space, target *pane) tea.Cmd {
 	}
 	command := m.config.Shell
 	args := shellArgsFor(runtime.GOOS)
-	if spec := agentByKind(target.kind); spec != nil {
+	if target.durable != nil {
+		durableCommand, durableArgs, err := m.durableLaunch(target)
+		if err != nil {
+			id := target.id
+			return func() tea.Msg { return paneStartedMsg{id: id, err: err} }
+		}
+		command, args = durableCommand, durableArgs
+	} else if spec := agentByKind(target.kind); spec != nil {
 		command = m.config.binaryFor(target.kind)
 		args = append([]string{}, spec.args...)
 		if target.kind == "zot" {
@@ -846,6 +912,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if handled, cmd := m.updateContinuous(message); handled {
+		return m, cmd
+	}
 	switch msg := message.(type) {
 	case pluginTickMsg:
 		return m, m.publishPluginSnapshots()
@@ -1116,6 +1185,8 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modePluginView:
 		return m.updatePluginViewKey(msg)
+	case modeDurablePrompt:
+		return m.updateDurablePromptKey(msg)
 	case modeRename:
 		switch msg.String() {
 		case "esc":
@@ -1352,6 +1423,13 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "settings":
 		m.openSettings()
+	case "continuous":
+		return m, m.openContinuousPanel(rect{x: m.sidebarContentWidth() + 2, y: 1})
+	case "durable-right":
+		if currentSpace := m.currentSpace(); currentSpace != nil && m.durableAvailable() {
+			return m.splitDurable(currentSpace, nil, "right")
+		}
+		return m, m.flashStatus("durable agents are unavailable (zot disabled, no state directory, or unsupported platform)")
 	case "plugins":
 		return m, m.openPluginManager()
 	case "sidebar-toggle":
@@ -1600,6 +1678,11 @@ func (m *Model) openKindPicker(action string, target *space, path string, at rec
 		items = append(items, menuItem{kind, "kind:" + kind})
 	}
 	items = append(items, menuItem{"shell", "kind:shell"})
+	// Durable zot is an explicit, separate choice after the ordinary ones,
+	// so the existing one-key flow and default selection are unchanged.
+	if m.durableAvailable() && path == "" {
+		items = append(items, menuItem{durablePickLabel, "durable-pick"})
+	}
 
 	m.mode = modeMenu
 	m.menuPane = nil
@@ -1663,6 +1746,41 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 	if kind, ok := strings.CutPrefix(action, "kind:"); ok {
 		return m.runKindPick(kind)
+	}
+	if action == "durable-pick" {
+		return m.runDurablePick()
+	}
+	if m.pickAction == "continuous" || m.pickAction == "continuous-review" {
+		owner, at, review := m.pickSpace, m.menuAt, m.pickAction == "continuous-review"
+		m.closeMenu()
+		if owner != nil && !slices.Contains(m.spaces, owner) {
+			return m, nil
+		}
+		if review {
+			return m.runDurableReview(action)
+		}
+		return m.runContinuousAction(action, owner, at)
+	}
+	if action == "pane-durable-retry" || action == "pane-durable-view" {
+		targetPane := m.menuPane
+		m.closeMenu()
+		if targetPane == nil {
+			return m, nil
+		}
+		if live, owner := m.paneByID(targetPane.id); live == targetPane && owner != nil && live.durable != nil {
+			if action == "pane-durable-retry" {
+				return m, m.retryDurable(live)
+			}
+			if !live.durable.Valid() {
+				// Without a bound conversation "another view" would create a
+				// new agent instead.
+				return m, m.flashStatus("this view is not bound to a conversation yet")
+			}
+			ref := *live.durable
+			m.focusPane(owner, live)
+			return m.splitDurable(owner, &ref, "right")
+		}
+		return m, nil
 	}
 	targetPane := m.menuPane
 	targetTab := m.menuTab
@@ -2203,6 +2321,11 @@ func (m Model) paneBusy(currentPane *pane) bool {
 // sidebar can share one lookup between the busy check and the attention dot.
 // Any non-empty title state is authoritative and outranks the screen scrape.
 func (m Model) paneBusyWithTitle(currentPane *pane, titleState string) bool {
+	if currentPane.durable != nil {
+		// Durable views use host state only. A disconnected host is never
+		// reported as busy or idle by scraping the attached view's screen.
+		return m.durableBusy(currentPane)
+	}
 	kind := m.paneAgentKind(currentPane)
 	if kind == "" || !currentPane.running || currentPane.term == nil {
 		return false
@@ -2424,6 +2547,9 @@ func (m Model) sidebarRows() []sidebarRow {
 					tabIndex == currentSpace.active &&
 					paneIndex == currentTab.selected
 				state := sidebarPaneState(currentPane)
+				if currentPane.durable != nil {
+					state = m.durableSidebarState(currentPane)
+				}
 				if m.sideCollapsed {
 					state = ""
 				}
@@ -2567,10 +2693,13 @@ func (m Model) publishCursor() {
 			m.cursorSink.Set(screenX, screenY, true)
 			return
 		}
-	case modeNewSpace, modeRename:
+	case modeNewSpace, modeRename, modeDurablePrompt:
 		badge := " NEW WORKSPACE "
 		if m.mode == modeRename {
 			badge = " RENAME "
+		}
+		if m.mode == modeDurablePrompt {
+			badge = " DURABLE "
 		}
 		// Footer layout: badge, one space, then the input's value.
 		m.cursorSink.Set(len(badge)+1+m.input.Position(), m.height-1, true)
@@ -2986,6 +3115,9 @@ func (m Model) renderFooter() string {
 	case modeRename:
 		badge = styleBadgeInput.Render(" RENAME ")
 		body = m.renderPromptInput()
+	case modeDurablePrompt:
+		badge = styleBadgeInput.Render(" DURABLE ")
+		body = m.renderPromptInput()
 	case modePluginView:
 		badge = styleBadgeInput.Render(" PLUGIN ")
 		body = styleBarMuted.Render(" esc closes view, " + m.prefixTrigger + " opens host commands")
@@ -3142,6 +3274,7 @@ func (m Model) prefixHintEntries() [][2]string {
 		{keys("scroll-up", "scroll-down"), "scroll"},
 		{keys("close-pane", "close-space"), "close"},
 		{keys("settings"), "settings"},
+		{keys("continuous"), "durable"},
 		{keys("plugins"), "plugins"},
 		{keys("quit"), "quit"},
 	}
@@ -3378,6 +3511,15 @@ func (m *Model) closeAll() {
 	if m.holder != nil {
 		m.holder.Close()
 	}
+	// Closing host connections never cancels host work; managed hosts run
+	// independently of the TUI and are stopped only explicitly.
+	if m.cpool != nil {
+		m.cpool.Close()
+	}
+	for _, pending := range m.pendingAttaches {
+		sendReply(pending.reply, nil, api.CodeError, "hrdx is quitting")
+	}
+	m.pendingAttaches = nil
 }
 
 func (m *Model) currentSpace() *space {

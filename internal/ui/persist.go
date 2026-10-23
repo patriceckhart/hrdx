@@ -9,6 +9,11 @@ func (m *Model) snapshot() state.State {
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
 		SidebarCollapsed: m.sideCollapsed,
 	}
+	for _, category := range durableCategories {
+		if m.durableMuted[category] {
+			saved.DurableMuted = append(saved.DurableMuted, category)
+		}
+	}
 	for _, spec := range agentSpecs {
 		if m.disabled[spec.kind] {
 			saved.DisabledAgents = append(saved.DisabledAgents, spec.kind)
@@ -16,10 +21,12 @@ func (m *Model) snapshot() state.State {
 	}
 	for _, currentSpace := range m.spaces {
 		ws := state.Workspace{
-			GroupPath: append([]string(nil), currentSpace.groupPath...),
-			Name:      currentSpace.name,
-			CWD:       currentSpace.cwd,
-			Active:    currentSpace.active,
+			GroupPath:  append([]string(nil), currentSpace.groupPath...),
+			Name:       currentSpace.name,
+			CWD:        currentSpace.cwd,
+			Active:     currentSpace.active,
+			Host:       currentSpace.host,
+			Continuous: append([]state.DurableRef(nil), currentSpace.durables...),
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -32,9 +39,14 @@ func (m *Model) snapshot() state.State {
 				if paneIndex == currentTab.selected {
 					savedTab.Selected = len(savedTab.Panes)
 				}
-				savedTab.Panes = append(savedTab.Panes, state.Pane{
+				saved := state.Pane{
 					Kind: currentPane.kind, Name: currentPane.name, Session: currentPane.session,
-				})
+				}
+				if currentPane.durable != nil {
+					ref := *currentPane.durable
+					saved.Durable = &ref
+				}
+				savedTab.Panes = append(savedTab.Panes, saved)
 			}
 			savedTab.Layout = snapshotNode(currentTab.layout, index)
 			ws.Tabs = append(ws.Tabs, savedTab)
@@ -74,7 +86,12 @@ func (m *Model) restore(saved state.State) {
 		if ws.CWD == "" || len(savedTabs) == 0 {
 			continue
 		}
-		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active}
+		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active, host: ws.Host}
+		for _, ref := range ws.Continuous {
+			if ref.Valid() {
+				associate(restored, ref)
+			}
+		}
 		if validateGroupPath(ws.GroupPath) == nil {
 			restored.groupPath = append([]string(nil), ws.GroupPath...)
 		}
@@ -88,13 +105,29 @@ func (m *Model) restore(saved state.State) {
 				if !isAgentKind(kind) && kind != "shell" {
 					kind = "shell"
 				}
-				restoredTab.panes = append(restoredTab.panes, &pane{
+				restoredPane := &pane{
 					id:      m.nextID,
 					name:    savedPane.Name,
 					kind:    kind,
 					resume:  isAgentKind(kind),
 					session: savedPane.Session,
-				})
+				}
+				if ref := savedPane.Durable; ref != nil {
+					// A durable view relaunches by attaching to its exact
+					// conversation, never by resuming an unrelated session. An
+					// incomplete binding stays a durable pane that reports its
+					// failure; it is never silently turned into an ordinary agent.
+					copied := *ref
+					restoredPane.kind = "zot"
+					restoredPane.resume = false
+					restoredPane.durable = &copied
+					if copied.Valid() {
+						associate(restored, copied)
+					} else {
+						restoredPane.failure = "durable binding is incomplete, close this view"
+					}
+				}
+				restoredTab.panes = append(restoredTab.panes, restoredPane)
 				m.nextID++
 			}
 			restoredTab.layout = restoreNode(savedTab.Layout, restoredTab.panes)

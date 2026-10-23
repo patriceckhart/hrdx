@@ -195,10 +195,24 @@ func (s *Server) dispatch(request wireRequest) wireResponse {
 		}
 		return s.waitForState(request.ID, params)
 	default:
-		return fail(CodeUnknownMethod, "unknown method "+request.Method)
+		newParams, ok := continuousParams[request.Method]
+		if !ok {
+			return fail(CodeUnknownMethod, "unknown method "+request.Method)
+		}
+		params := newParams()
+		if err := decodeParams(request.Params, params); err != nil {
+			return fail(CodeInvalidParams, err.Error())
+		}
+		payload = derefParams(params)
 	}
 
-	answer, ok := s.roundTrip(request.Method, payload, requestTimeout)
+	timeout := requestTimeout
+	if IsContinuousMethod(request.Method) {
+		// Durable requests are answered after a host round trip, off the
+		// UI loop; the loop itself is never blocked while they wait.
+		timeout = continuousRequestTimeout
+	}
+	answer, ok := s.roundTrip(request.Method, payload, timeout)
 	if !ok {
 		return fail(CodeTimeout, "hrdx did not answer")
 	}
@@ -311,6 +325,40 @@ func (s *Server) serveSubscription(conn net.Conn, encoder *json.Encoder, request
 			return
 		}
 	}
+}
+
+// derefParams turns a decoded params pointer back into the value the UI
+// expects, matching how the other methods pass their payloads.
+func derefParams(params any) any {
+	switch value := params.(type) {
+	case *ContinuousHostRef:
+		return *value
+	case *ContinuousList:
+		return *value
+	case *ContinuousAttach:
+		return *value
+	case *ContinuousTarget:
+		return *value
+	case *ContinuousSubmit:
+		return *value
+	case *ContinuousSubmissionRef:
+		return *value
+	case *ContinuousRename:
+		return *value
+	case *ContinuousDecide:
+		return *value
+	case *ContinuousUnblock:
+		return *value
+	case *ContinuousWorkspaceHost:
+		return *value
+	case *ContinuousTaskRef:
+		return *value
+	case *ContinuousBudgetSet:
+		return *value
+	case *ContinuousConfigure:
+		return *value
+	}
+	return nil
 }
 
 func decodeParams(raw json.RawMessage, into any) error {
