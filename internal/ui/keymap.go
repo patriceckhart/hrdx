@@ -24,6 +24,7 @@ var defaultPrefixKeys = map[string][]string{
 	"agent-cycle":    {},
 	"shell-right":    {"s", "%", "|"},
 	"shell-down":     {"S", "\"", "-"},
+	"split-cycle":    {"v"},
 	"workspace":      {"w"},
 	"tab-new":        {"t"},
 	"tab-next":       {"n"},

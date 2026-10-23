@@ -83,9 +83,10 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 
 | After `ctrl+b` | Action |
 |---|---|
-| `c` or `C` | Split right / below (opens a picker: installed agents or shell) |
-| `a` or `A` | Split right / below with the default agent directly |
-| `s` or `S` | Split with a new shell pane directly (right / below), also `%`/`\"` and `\|`/`-` |
+| `c` or `C` | Split in the default direction / the other direction (opens a picker: installed agents or shell) |
+| `a` or `A` | Split in the default / other direction with the default agent directly |
+| `s` or `S` | Split with a new shell pane directly (default / other direction); `%` and `\|` always split right, `\"` and `-` always below |
+| `v` | Cycle the default split direction: right, below, auto |
 | `w` | New workspace (directory prompt with tab completion, then agent/shell picker) |
 | `t` | New tab in the current workspace (opens the agent/shell picker) |
 | `n` or `p` | Next / previous tab |
@@ -108,6 +109,8 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `q` | Quit |
 | `left` / `right` | Scroll the hint row in the footer (narrow terminals) |
 
+The default split direction is right, so `c`, `a`, and `s` keep their usual meaning. Change it with `v` or under the terminal tab in settings: **below** swaps the lowercase and uppercase keys, and **auto** splits the focused pane along its longer side (side by side when it is at least twice as wide as tall in cells, otherwise below). The choice is saved as the optional `split_direction` (`"down"` or `"auto"`; empty means right). The `-right` / `-down` action names in `keys.json` keep naming the lowercase and uppercase keys; context menus and the socket API keep their explicit directions.
+
 Panes whose process exits (for example `exit` in a shell) close automatically; the sibling pane takes the room. Panes that fail to start stay visible with the error.
 
 `alt+enter` reaches the focused pane with its Alt modifier when the host terminal reports it, so apps such as zot can use it to insert a newline. `shift+enter` requires the host terminal to report Shift separately from ordinary Enter; hrdx cannot recover a modifier the terminal did not send.
@@ -127,7 +130,7 @@ Keys are configurable via a `keys.json` next to the state file (`~/Library/Appli
 }
 ```
 
-Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `tab-1` through `tab-9`, `tab-0`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
+Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `split-cycle`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `tab-1` through `tab-9`, `tab-0`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
 
 ## Mouse
 

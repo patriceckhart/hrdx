@@ -77,7 +77,16 @@ func (m Model) settingsRows() []settingsRow {
 		}
 		return rows
 	case 3: // terminal
-		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows := []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows = append(rows, settingsRow{"default split direction:", ""})
+		for _, value := range splitDirections {
+			mark := "( ) "
+			if m.splitDirection == value {
+				mark = "(•) "
+			}
+			rows = append(rows, settingsRow{"  " + mark + splitDirectionLabel(value), "split-dir:" + value})
+		}
+		return rows
 	case 4, 5:
 		if tabs := m.settingsTabs(); m.settingsTab < len(tabs) && tabs[m.settingsTab] == "durable" {
 			return m.durableSettingsRows()
@@ -138,6 +147,11 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		if m.notifyOn {
 			systemNotify()
 		}
+	}
+	if value, ok := strings.CutPrefix(row.action, "split-dir:"); ok {
+		m.splitDirection = validSplitDirection(value)
+		m.persist()
+		return nil
 	}
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy

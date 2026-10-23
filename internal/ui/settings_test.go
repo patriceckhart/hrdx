@@ -58,7 +58,7 @@ func TestAutoCopySettingDefaultsOnAndPersists(t *testing.T) {
 	}
 	model.settingsTab = 3
 	rows := model.settingsRows()
-	if len(rows) != 1 || rows[0].action != "auto-copy" || rows[0].label != "[x] automatically copy selected text" {
+	if len(rows) == 0 || rows[0].action != "auto-copy" || rows[0].label != "[x] automatically copy selected text" {
 		t.Fatalf("terminal settings rows = %+v", rows)
 	}
 

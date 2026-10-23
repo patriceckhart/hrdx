@@ -118,6 +118,10 @@ type State struct {
 	// SidebarWidth is the expanded sidebar width chosen by dragging its
 	// border. Zero keeps the default width.
 	SidebarWidth int `json:"sidebar_width,omitempty"`
+
+	// SplitDirection is where the primary prefix split keys put new panes:
+	// empty (right), "down", or "auto" (the focused pane's longer side).
+	SplitDirection string `json:"split_direction,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
