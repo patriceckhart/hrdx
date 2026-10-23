@@ -34,6 +34,8 @@ func contains(values []string, wanted string) bool {
 const (
 	sidebarWidth          = 26
 	collapsedSidebarWidth = 12
+	minSidebarWidth       = 20
+	maxSidebarWidth       = 80
 )
 
 type inputMode int
@@ -207,6 +209,9 @@ type Model struct {
 	keyOverrides  map[string]string // action -> key from keys.json, for hints
 	findIndex     int               // selected row of the find window
 	quitting      bool              // shutting down: exits must not edit the layout
+
+	sideWidth   int  // expanded sidebar width chosen by dragging, 0 = default
+	dragSidebar bool // the sidebar border is being dragged
 
 	plugins             *plugin.Runtime
 	pluginStates        map[string]plugin.Status
@@ -507,6 +512,7 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		}
 	}
 	model.prefixTrigger = model.primaryKey("prefix")
+	model.sideWidth = max(0, saved.SidebarWidth)
 	if statePath != "" {
 		profiles, profileProblems := continuous.LoadProfiles(filepath.Dir(statePath))
 		for _, profile := range profiles {
@@ -808,7 +814,35 @@ func (m Model) sidebarContentWidth() int {
 	if m.sideCollapsed {
 		return collapsedSidebarWidth
 	}
-	return sidebarWidth
+	return clampSidebarWidth(m.sideWidth, m.width)
+}
+
+// clampSidebarWidth resolves a dragged width (0 = default) so the sidebar
+// stays readable and the terminal keeps at least half of the window.
+func clampSidebarWidth(width, window int) int {
+	if width <= 0 {
+		width = sidebarWidth
+	}
+	limit := maxSidebarWidth
+	if window > 0 {
+		limit = min(limit, window/2)
+	}
+	return clampInt(width, minSidebarWidth, max(minSidebarWidth, limit))
+}
+
+// setSidebarWidth applies a new expanded width and resizes every PTY.
+func (m *Model) setSidebarWidth(width int) {
+	width = clampSidebarWidth(width, m.width)
+	if width == sidebarWidth {
+		width = 0
+	}
+	if width == m.sideWidth {
+		return
+	}
+	m.sideWidth = width
+	for _, currentSpace := range m.spaces {
+		m.resizePanes(currentSpace)
+	}
 }
 
 // terminalArea is the local rect of the pane region (right of the sidebar,
@@ -2000,6 +2034,24 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		return m, nil
+	}
+
+	if m.dragSidebar {
+		switch msg.Action {
+		case tea.MouseActionMotion:
+			m.setSidebarWidth(msg.X)
+			return m, nil
+		case tea.MouseActionRelease:
+			m.setSidebarWidth(msg.X)
+			m.dragSidebar = false
+			m.persist()
+			return m, nil
+		}
+	}
+	if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress && m.mode == modeTerminal &&
+		!m.sideCollapsed && msg.X == sidebarContentWidth && msg.Y >= 1 && msg.Y < m.height-1 {
+		m.dragSidebar = true
 		return m, nil
 	}
 

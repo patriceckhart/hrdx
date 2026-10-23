@@ -7,7 +7,7 @@ func (m *Model) snapshot() state.State {
 	saved := state.State{
 		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
-		SidebarCollapsed: m.sideCollapsed,
+		SidebarCollapsed: m.sideCollapsed, SidebarWidth: m.sideWidth,
 	}
 	for _, category := range durableCategories {
 		if m.durableMuted[category] {

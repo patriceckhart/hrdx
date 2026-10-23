@@ -114,6 +114,10 @@ type State struct {
 	// DurableMuted lists durable notification categories the user turned
 	// off: finished, failed, approval, recovery, host. Empty notifies all.
 	DurableMuted []string `json:"durable_muted,omitempty"`
+
+	// SidebarWidth is the expanded sidebar width chosen by dragging its
+	// border. Zero keeps the default width.
+	SidebarWidth int `json:"sidebar_width,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
