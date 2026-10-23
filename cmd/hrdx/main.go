@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -250,6 +251,15 @@ func main() {
 	var holderClient *holder.Client
 	if persistOn && statePath != "" {
 		client, err := holder.ConnectOrSpawn(sockets.holder, resolvedVersion())
+		if errors.Is(err, holder.ErrHolderBusy) {
+			// Another hrdx terminal owns the holder. Starting anyway would
+			// launch unpersisted panes and overwrite that instance's state.
+			fmt.Fprintln(os.Stderr, "hrdx: already running in another terminal (session holder is busy); quit it first or use --state for a separate instance")
+			if plugins != nil {
+				plugins.Close()
+			}
+			os.Exit(1)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "hrdx: session holder unavailable, panes will not persist:", err)
 		} else {

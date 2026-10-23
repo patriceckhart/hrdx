@@ -89,32 +89,42 @@ func Spawn(socket string) error {
 // stale socket file (nothing listening) is removed first; a holder
 // speaking an incompatible protocol (left over from an old binary) is
 // shut down and replaced, losing its sessions.
+//
+// A live holder that does not complete the handshake is serving another
+// hrdx terminal. That returns ErrHolderBusy and leaves the socket alone:
+// replacing it would orphan the running holder and its sessions, and
+// saved session ids would then resolve against an unrelated holder.
 func ConnectOrSpawn(socket, version string) (*Client, error) {
-	client, err := Connect(socket)
-	if err == nil {
-		return client, nil
+	return connectOrSpawn(socket, 10*time.Second, Spawn)
+}
+
+func connectOrSpawn(socket string, helloTimeout time.Duration, spawn func(string) error) (*Client, error) {
+	conn, err := net.DialTimeout("unix", socket, 2*time.Second)
+	if err != nil && !noListener(err) {
+		return nil, fmt.Errorf("dial session holder: %w", err)
 	}
-	if strings.Contains(err.Error(), "protocol mismatch") {
-		// The shutdown op works without a successful hello.
-		if old, dialErr := dialRaw(socket); dialErr == nil {
-			old.Shutdown()
-			old.Close()
+	if err == nil {
+		client := newClient(conn)
+		_ = conn.SetDeadline(time.Now().Add(helloTimeout))
+		_, helloErr := client.call(request{Op: "hello", Protocol: Protocol})
+		if helloErr == nil {
+			_ = conn.SetDeadline(time.Time{})
+			return client, nil
 		}
+		if !strings.Contains(helloErr.Error(), "protocol mismatch") {
+			client.Close()
+			return nil, fmt.Errorf("%w: %v", ErrHolderBusy, helloErr)
+		}
+		// The shutdown op works without a successful hello.
+		_ = conn.SetDeadline(time.Now().Add(helloTimeout))
+		client.Shutdown()
+		client.Close()
 	}
 	_ = os.Remove(socket)
-	if err := Spawn(socket); err != nil {
+	if err := spawn(socket); err != nil {
 		return nil, err
 	}
 	return Connect(socket)
-}
-
-// dialRaw connects without the hello handshake.
-func dialRaw(socket string) (*Client, error) {
-	conn, err := net.DialTimeout("unix", socket, 2*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	return newClient(conn), nil
 }
 
 // readLoop dispatches incoming frames until the connection dies.

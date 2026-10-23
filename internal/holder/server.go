@@ -61,6 +61,7 @@ type Server struct {
 
 	listener net.Listener
 	done     chan struct{}
+	stopOnce sync.Once // shutdown may be requested by several clients
 }
 
 // NewServer prepares a holder for the given socket path.
@@ -393,7 +394,7 @@ func (s *Server) shutdown() {
 	for _, current := range all {
 		s.kill(current)
 	}
-	close(s.done)
+	s.stopOnce.Do(func() { close(s.done) })
 }
 
 // foreground resolves the session's foreground process name, cached.

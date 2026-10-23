@@ -37,10 +37,7 @@ type Manager struct {
 func DialManager(socket string, timeout time.Duration) (*Manager, error) {
 	conn, err := net.DialTimeout("unix", socket, timeout)
 	if err != nil {
-		// Windows AF_UNIX reports a missing or stale socket as Winsock's
-		// WSAECONNREFUSED (10061), not syscall.ECONNREFUSED.
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) ||
-			(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10061))) {
+		if noListener(err) {
 			return nil, fmt.Errorf("%w: %v", ErrNoHolder, err)
 		}
 		return nil, fmt.Errorf("dial session holder: %w", err)
@@ -55,6 +52,14 @@ func DialManager(socket string, timeout time.Duration) (*Manager, error) {
 		return nil, fmt.Errorf("%w: %v", ErrHolderBusy, err)
 	}
 	return &Manager{client: client, timeout: timeout}, nil
+}
+
+// noListener reports whether a dial error means nothing is listening on the
+// socket: the file is missing or stale. Windows AF_UNIX reports a stale
+// socket as Winsock's WSAECONNREFUSED (10061), not syscall.ECONNREFUSED.
+func noListener(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) ||
+		(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10061)))
 }
 
 // Sessions lists the holder's sessions. A holder speaking an incompatible
