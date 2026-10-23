@@ -137,18 +137,26 @@ func TestSoundToggleRoundTrip(t *testing.T) {
 	if rows[len(rows)-1].action != "notify" {
 		t.Fatalf("last row = %+v, want the notify toggle", rows[len(rows)-1])
 	}
+	sounds := soundRequests.Load()
 	model.toggleSettingsRow(rows[0])
 	if !model.soundOn {
 		t.Fatal("sound should be on after toggle")
+	}
+	if soundRequests.Load() != sounds+1 {
+		t.Fatal("enabling sound should preview it once")
 	}
 	if !model.snapshot().Sound {
 		t.Fatal("snapshot should carry the sound setting")
 	}
 
 	// The system notification toggle persists too.
+	notifies := notifyRequests.Load()
 	model.toggleSettingsRow(settingsRow{action: "notify"})
 	if !model.notifyOn || !model.snapshot().Notify {
 		t.Fatal("notify should be on and persisted")
+	}
+	if notifyRequests.Load() != notifies+1 {
+		t.Fatal("enabling notifications should ring the bell once")
 	}
 
 	restored := New(Config{Shell: "/bin/sh"}, nil, "", model.snapshot())

@@ -155,22 +155,28 @@ func soundFile(kind string) string {
 	return path
 }
 
-// systemNotify requests the platform's native attention indicator by
+// Replaceable so tests stay silent.
+var (
+	systemNotify = ringTerminalBell
+	playSound    = playSoundFile
+)
+
+// ringTerminalBell requests the platform's native attention indicator by
 // ringing the terminal bell. Terminals translate BEL into their OS
 // convention: on macOS a dock badge and bounce, on Linux the window
 // manager's urgency hint (highlighted taskbar entry / attention flag).
 // No notification daemon or permission is involved, which makes this
 // the same native behavior everywhere.
-func systemNotify() {
+func ringTerminalBell() {
 	_, _ = os.Stdout.WriteString("\a")
 }
 
-// playSound plays the configured notification sound in the background
+// playSoundFile plays the configured notification sound in the background
 // through an OS audio player. Players occasionally fail transiently
 // (device switching, coreaudio hiccups), so each is retried once and
 // the macOS system beep serves as a further fallback before the
 // terminal bell.
-func playSound(kind string) {
+func playSoundFile(kind string) {
 	file := soundFile(kind)
 	go func() {
 		if file != "" {
