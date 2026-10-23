@@ -25,9 +25,17 @@ import (
 // terminal then delivers ESC[200~ … ESC[201~ and Bubble Tea emits one
 // paste message, exactly as on Unix. Mouse and focus reports arrive as
 // the VT sequences hrdx already requests.
+//
+// CONIN$ is opened here rather than through WithInputTTY: Bubble Tea would
+// close that handle on exit while its read is still blocked in
+// ReadConsole, so quitting would wait for one more key press.
 func platformInputOptions() []tea.ProgramOption {
 	var repair utf8Repair
-	return []tea.ProgramOption{tea.WithInputTTY(), tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+	input := tea.WithInputTTY()
+	if conin, err := os.OpenFile("CONIN$", os.O_RDWR, 0); err == nil {
+		input = tea.WithInput(conin)
+	}
+	return []tea.ProgramOption{input, tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
 		return repair.filter(msg)
 	})}
 }
