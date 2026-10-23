@@ -49,6 +49,8 @@ var (
 	styleNewButton lipgloss.Style
 	styleMuted     lipgloss.Style
 	styleError     lipgloss.Style
+
+	styleSubrepoTarget lipgloss.Style
 )
 
 func rebuildStyles() {
@@ -79,6 +81,7 @@ func rebuildStyles() {
 	styleNewButton = lipgloss.NewStyle().Foreground(colorAccent)
 	styleMuted = lipgloss.NewStyle().Foreground(colorMuted)
 	styleError = lipgloss.NewStyle().Foreground(colorBad)
+	styleSubrepoTarget = lipgloss.NewStyle().Background(colorAccent).Foreground(colorInk).Bold(true)
 }
 
 func init() { rebuildStyles() }

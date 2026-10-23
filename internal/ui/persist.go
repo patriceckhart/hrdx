@@ -1,6 +1,11 @@
 package ui
 
-import "github.com/patriceckhart/hrdx/internal/state"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/patriceckhart/hrdx/internal/state"
+)
 
 // snapshot converts the live model into its serializable form.
 func (m *Model) snapshot() state.State {
@@ -9,6 +14,7 @@ func (m *Model) snapshot() state.State {
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
 		SidebarCollapsed: m.sideCollapsed, SidebarWidth: m.sideWidth,
 		SplitDirection: m.splitDirection, WorkspaceFolding: m.foldEnabled,
+		SubrepoDepth: m.subrepoDepth,
 	}
 	for _, category := range durableCategories {
 		if m.durableMuted[category] {
@@ -29,6 +35,8 @@ func (m *Model) snapshot() state.State {
 			Host:       currentSpace.host,
 			Continuous: append([]state.DurableRef(nil), currentSpace.durables...),
 			Folded:     currentSpace.folded,
+
+			HiddenSubrepos: sortedKeys(currentSpace.hiddenSubrepos),
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -43,6 +51,7 @@ func (m *Model) snapshot() state.State {
 				}
 				saved := state.Pane{
 					Kind: currentPane.kind, Name: currentPane.name, Session: currentPane.session,
+					CWD: currentPane.cwd,
 				}
 				if currentPane.durable != nil {
 					ref := *currentPane.durable
@@ -94,6 +103,14 @@ func (m *Model) restore(saved state.State) {
 				associate(restored, ref)
 			}
 		}
+		for _, rel := range ws.HiddenSubrepos {
+			if rel = cleanSubrepoRel(rel); rel != "" {
+				if restored.hiddenSubrepos == nil {
+					restored.hiddenSubrepos = map[string]bool{}
+				}
+				restored.hiddenSubrepos[rel] = true
+			}
+		}
 		if validateGroupPath(ws.GroupPath) == nil {
 			restored.groupPath = append([]string(nil), ws.GroupPath...)
 		}
@@ -113,6 +130,7 @@ func (m *Model) restore(saved state.State) {
 					kind:    kind,
 					resume:  isAgentKind(kind),
 					session: savedPane.Session,
+					cwd:     restoredPaneDir(savedPane.CWD),
 				}
 				if ref := savedPane.Durable; ref != nil {
 					// A durable view relaunches by attaching to its exact
@@ -146,6 +164,18 @@ func (m *Model) restore(saved state.State) {
 		m.spaces = append(m.spaces, restored)
 	}
 	m.selected = clampInt(saved.Selected, 0, max(0, len(m.spaces)-1))
+}
+
+// restoredPaneDir drops a saved directory that no longer exists, so the
+// pane falls back to the workspace directory.
+func restoredPaneDir(path string) string {
+	if path == "" || !filepath.IsAbs(path) {
+		return ""
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return ""
+	}
+	return path
 }
 
 func restoreNode(n *state.Node, panes []*pane) *splitNode {

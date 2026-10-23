@@ -299,6 +299,7 @@ func (m *Model) apiStatus() api.Status {
 			Selected:       spaceIndex == m.selected,
 			Branch:         m.gitBranch(currentSpace.cwd).value,
 			ContinuousHost: currentSpace.host,
+			Subrepos:       m.apiSubrepos(currentSpace.cwd),
 		}
 		views := map[string]int{}
 		for _, currentTab := range currentSpace.tabs {

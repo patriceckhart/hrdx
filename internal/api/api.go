@@ -179,6 +179,21 @@ type WorkspaceStatus struct {
 	// Continuous lists associated conversations, with or without views.
 	ContinuousHost string          `json:"continuous_host,omitempty"`
 	Continuous     []DurableStatus `json:"continuous,omitempty"`
+
+	// Subrepos lists git repositories nested below Path. It is present only
+	// when the sub-repository setting is enabled and a scan has completed.
+	Subrepos []SubrepoStatus `json:"subrepos,omitempty"`
+}
+
+// SubrepoStatus is the git status of one nested repository.
+type SubrepoStatus struct {
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	Branch    string `json:"branch,omitempty"`
+	Ahead     int    `json:"ahead,omitempty"`
+	Behind    int    `json:"behind,omitempty"`
+	Changed   int    `json:"changed,omitempty"`
+	Conflicts int    `json:"conflicts,omitempty"`
 }
 
 // Status is the full state snapshot returned by the status method.

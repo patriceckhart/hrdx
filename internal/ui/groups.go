@@ -60,7 +60,7 @@ func (m Model) groupSidebarRows(flat []sidebarRow) []sidebarRow {
 	end := 3
 	for i := 3; i < len(flat); i++ {
 		row := flat[i]
-		if row.kind != "space" && row.kind != "pane" && row.kind != "divider" {
+		if row.kind != "space" && row.kind != "pane" && row.kind != "subrepo" && row.kind != "divider" {
 			break
 		}
 		end = i + 1

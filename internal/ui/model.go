@@ -111,6 +111,7 @@ type pane struct {
 	// verified on the host in this process.
 	durable      *state.DurableRef
 	durableReady bool
+	cwd          string // start directory when not the workspace's, e.g. a sub-repository
 }
 
 // tab is one tabbed layout of panes inside a workspace.
@@ -128,9 +129,10 @@ type space struct {
 	tabs      []*tab
 	active    int
 
-	host     string             // host profile for new durable panes, "" = managed default
-	durables []state.DurableRef // durable conversations associated with the workspace
-	folded   bool               // sidebar shows only the name row
+	host           string             // host profile for new durable panes, "" = managed default
+	durables       []state.DurableRef // durable conversations associated with the workspace
+	folded         bool               // sidebar shows only the name row
+	hiddenSubrepos map[string]bool    // relative sub-repository paths hidden from the sidebar
 }
 
 // tab returns the active tab, never nil for a live workspace.
@@ -215,7 +217,13 @@ type Model struct {
 	sideWidth   int  // expanded sidebar width chosen by dragging, 0 = default
 	dragSidebar bool // the sidebar border is being dragged
 
-	splitDirection string // default prefix split: "" (right), "down", or "auto"
+	splitDirection string                  // default prefix split: "" (right), "down", or "auto"
+	subrepoDepth   int                     // sub-repository search depth, 0 = off
+	subrepoGen     int                     // invalidates in-flight scans after a setting change
+	subrepos       map[string]subrepoCache // workspace cwd -> discovered repositories
+
+	pickFromSubrepo  bool // the open picker came from a sub-repository row
+	subrepoLastDepth int  // depth restored when the setting is switched back on
 
 	plugins             *plugin.Runtime
 	pluginStates        map[string]plugin.Status
@@ -317,7 +325,11 @@ func (m Model) menuItems() []menuItem {
 			if m.menuSpace.folded {
 				fold.label = "Expand"
 			}
-			builtins = append(append([]menuItem{}, spaceMenuItems...), fold)
+			builtins = append(append([]menuItem{}, builtins...), fold)
+		}
+		if hidden := len(m.menuSpace.hiddenSubrepos); hidden > 0 {
+			builtins = append(append([]menuItem{}, builtins...),
+				menuItem{fmt.Sprintf("Show hidden folders (%d)", hidden), "space-unhide-subrepos"})
 		}
 	} else if m.menuTab != nil {
 		target = "tab"
@@ -526,6 +538,8 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 	model.sideWidth = max(0, saved.SidebarWidth)
 
 	model.splitDirection = validSplitDirection(saved.SplitDirection)
+	model.subrepoDepth = clampInt(saved.SubrepoDepth, 0, maxSubrepoDepth)
+	model.subrepos = map[string]subrepoCache{}
 	if statePath != "" {
 		profiles, profileProblems := continuous.LoadProfiles(filepath.Dir(statePath))
 		for _, profile := range profiles {
@@ -683,6 +697,9 @@ func checkForUpdate(cacheDir, version string) tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	var commands []tea.Cmd
 	commands = append(commands, checkForUpdate(m.config.CacheDir, m.config.Version), waitPluginEvent(m.plugins), durableKick)
+	if m.subrepoDepth > 0 {
+		commands = append(commands, subrepoTick(m.subrepoGen, 0))
+	}
 	m.gcHolderSessions()
 	for _, currentSpace := range m.spaces {
 		for _, currentTab := range currentSpace.tabs {
@@ -747,6 +764,9 @@ func (m Model) startPTY(owner *space, target *pane) tea.Cmd {
 		}
 	}
 	cwd := owner.cwd
+	if target.cwd != "" {
+		cwd = target.cwd
+	}
 	id := target.id
 
 	if m.holder != nil {
@@ -965,6 +985,10 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case pluginTickMsg:
 		return m, m.publishPluginSnapshots()
+	case subrepoTickMsg:
+		return m.handleSubrepoTick(msg)
+	case subreposMsg:
+		return m.handleSubrepos(msg)
 	case pluginEventMsg:
 		return m, m.handlePluginEvent(msg.event)
 	case pluginActivationMsg:
@@ -1687,6 +1711,7 @@ func (m *Model) closeMenu() {
 	m.pickAction = ""
 	m.pickSpace = nil
 	m.pickPath = ""
+	m.pickFromSubrepo = false
 }
 
 // toggleAgent flips one agent kind in settings. The last enabled agent
@@ -1787,8 +1812,36 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 		return m.splitCurrentSide(kind, false, true)
 	case "split-down":
 		return m.splitCurrent(kind, false)
+	case "subrepo-tab", "subrepo-split-right", "subrepo-split-down":
+		return m.openInSubrepo(target, path, kind, strings.TrimPrefix(action, "subrepo-"))
 	}
 	return m, nil
+}
+
+func (m Model) openInSubrepo(target *space, path, kind, where string) (tea.Model, tea.Cmd) {
+	if target == nil || path == "" {
+		return m, nil
+	}
+	for index, currentSpace := range m.spaces {
+		if currentSpace == target {
+			m.selected = index
+		}
+	}
+	var newPane *pane
+	switch where {
+	case "tab":
+		newPane = m.addTab(target, kind)
+	case "split-right":
+		newPane = m.addPaneSide(target, kind, true, false)
+	default:
+		newPane = m.addPaneSide(target, kind, false, false)
+	}
+	if filepath.Clean(path) != filepath.Clean(target.cwd) {
+		newPane.cwd = path
+	}
+	m.resizePanes(target)
+	m.persist()
+	return m, m.startPane(target, newPane)
 }
 
 func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
@@ -1828,6 +1881,24 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.focusPane(owner, live)
 			return m.splitDurable(owner, &ref, "right")
 		}
+		return m, nil
+	}
+	if where, ok := strings.CutPrefix(action, "subrepo:"); ok {
+		target, path, at := m.pickSpace, m.pickPath, m.menuAt
+		m.closeMenu()
+		if target == nil || !slices.Contains(m.spaces, target) {
+			return m, nil
+		}
+		if where == "hide" {
+			m.hideSubrepo(target, path)
+			return m, nil
+		}
+		if where == "space" {
+			m.openKindPicker("space", nil, path, at)
+		} else {
+			m.openKindPicker("subrepo-"+where, target, path, at)
+		}
+		m.pickFromSubrepo = true
 		return m, nil
 	}
 	targetPane := m.menuPane
@@ -1873,6 +1944,8 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.openKindPicker("tab", targetSpace, "", at)
 		case "space-fold":
 			m.toggleSpaceFold(targetSpace)
+		case "space-unhide-subrepos":
+			return m, m.unhideSubrepos(targetSpace)
 		}
 		return m, nil
 	}
@@ -2018,7 +2091,7 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			hit := m.sidebarHit(msg.Y - 1)
-			descendant := hit.kind == "space" || hit.kind == "tab" || hit.kind == "pane"
+			descendant := hit.kind == "space" || hit.kind == "tab" || hit.kind == "pane" || hit.kind == "subrepo"
 			if descendant && hit.space >= 0 && hit.space < len(m.spaces) &&
 				m.spaces[hit.space] != m.dragSpace {
 				if m.moveSpaceTo(m.dragSpace, hit.space) {
@@ -2231,6 +2304,11 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		target := m.spaces[hit.space]
 		at := rect{x: msg.X, y: msg.Y - 1}
 		switch hit.kind {
+		case "subrepo":
+			if owner, repo, ok := m.subrepoAt(hit); ok {
+				m.selected = hit.space
+				m.openSubrepoPicker(owner, repo.path, at)
+			}
 		case "space":
 			m.selected = hit.space
 			m.clearFocusedAttention()
@@ -2301,6 +2379,14 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				// pane, both of which belong to the saved state.
 				m.persist()
 			}
+		}
+	case "subrepo":
+		if !subrepoTextHit(hit.label, msg.X) {
+			return m, nil
+		}
+		if owner, repo, ok := m.subrepoAt(hit); ok {
+			m.selected = hit.space
+			m.openSubrepoPicker(owner, repo.path, rect{x: msg.X, y: msg.Y - 1})
 		}
 	case "new":
 		return m.openNewSpaceInput()
@@ -2380,6 +2466,8 @@ type sidebarRow struct {
 	pane   int
 	tabRow bool
 	fold   bool // workspace name row carrying the fold toggle
+
+	subrepo int // index into the workspace's sub-repository cache, -1 for folder rows
 }
 
 // paneBusy reports whether a pane running an agent (agent panes, or shell
@@ -2588,6 +2676,7 @@ func (m Model) sidebarRows() []sidebarRow {
 				kind:  "space", space: spaceIndex, tab: -1, pane: -1,
 			})
 		}
+		rows = append(rows, m.subrepoRows(spaceIndex, rail, width)...)
 
 		showTabs := len(currentSpace.tabs) > 1
 		for tabIndex, currentTab := range currentSpace.tabs {
