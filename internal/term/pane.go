@@ -180,6 +180,11 @@ func resolveCommand(command string) string {
 // TERM_PROGRAM=vscode makes capability-sniffing TUIs fall back to their
 // conservative rendering path. HRDX=1 announces the multiplexer, like
 // TMUX does, so tools can detect they run inside hrdx.
+//
+// hrdx understands OSC 7501 program status reports, so agents with an
+// opt-in variable (zot, pi) get it set to 1 unless the user chose a value.
+// Their own support query cannot be relied on: ConPTY does not deliver the
+// OSC acknowledgement to the child's input on Windows.
 func PaneEnv() []string {
 	drop := []string{
 		"TERM=", "TERM_PROGRAM=", "TERM_PROGRAM_VERSION=",
@@ -190,7 +195,13 @@ func PaneEnv() []string {
 		"HRDX=",
 	}
 	var env []string
+	programStatusSet := map[string]bool{}
 	for _, entry := range os.Environ() {
+		for _, name := range programStatusVars {
+			if strings.HasPrefix(entry, name+"=") {
+				programStatusSet[name] = true
+			}
+		}
 		skip := false
 		for _, prefix := range drop {
 			if strings.HasPrefix(entry, prefix) {
@@ -202,12 +213,19 @@ func PaneEnv() []string {
 			env = append(env, entry)
 		}
 	}
+	for _, name := range programStatusVars {
+		if !programStatusSet[name] {
+			env = append(env, name+"=1")
+		}
+	}
 	return append(env,
 		"TERM=xterm-256color",
 		"TERM_PROGRAM=vscode",
 		"HRDX=1",
 	)
 }
+
+var programStatusVars = []string{"ZOT_PROGRAM_STATUS", "PI_PROGRAM_STATUS"}
 
 // Updates delivers a signal whenever the screen content changed. The channel
 // closes when the subprocess exits.
@@ -808,6 +826,20 @@ func (p *Pane) Title() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.vt.Title()
+}
+
+// ProgramStatus returns the child's latest OSC 7501 state (idle, working,
+// blocked, done, error) and reporting app; empty when it never reported or
+// cleared its status, and always empty once the process exited.
+func (p *Pane) ProgramStatus() (state, app string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.exited {
+		return "", ""
+	}
+	p.vt.Lock()
+	defer p.vt.Unlock()
+	return p.vt.ProgramStatus()
 }
 
 // CursorCell reports the child's cursor cell and whether it is visible in

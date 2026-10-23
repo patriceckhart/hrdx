@@ -38,6 +38,9 @@ type View interface {
 	// Title represents the title of the console window.
 	Title() string
 
+	// ProgramStatus returns the latest OSC 7501 state and app (lock held).
+	ProgramStatus() (state, app string)
+
 	// Cell returns the glyph containing the character code, foreground color, and
 	// background color at position (x, y) relative to the top left of the terminal.
 	Cell(x, y int) Glyph

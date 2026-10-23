@@ -222,6 +222,25 @@ spinner on screen while it is really idle or blocked on a prompt: a matching
 title always outranks the screen scrape. Check what your harness emits with
 `printf '\e]2;...\a'`-style OSC titles before picking a substring.
 
+### Program status reports
+
+Agents that report their state through the Program Status Protocol (OSC 7501)
+are tracked from those reports instead of the screen: `working` is busy,
+`blocked` shows the orange attention dot, and `idle`, `done`, or `error` are
+idle. Reports outrank both title markers and the screen scrape, so custom
+spinner themes and braille characters in transcript text do not affect the busy
+state. Only the state is used; report messages are ignored. Agents that never
+report, or clear their status on exit, fall back to screen detection.
+
+hrdx answers the protocol's support query, but ConPTY does not forward that
+acknowledgement on Windows, so agents that wait for it are handled per agent:
+
+| Agent | Busy detection |
+|---|---|
+| codex | OSC 7501 reports, sent without a query |
+| zot, pi | OSC 7501 reports; panes start with `ZOT_PROGRAM_STATUS=1` and `PI_PROGRAM_STATUS=1` unless already set (set `0` before launching hrdx to opt out) |
+| claude | Terminal title: `◐`/`◑` while working, `✳` when idle; OSC 7501 reports win when they arrive (for example on macOS and Linux) |
+
 ## Workspace groups
 
 Groups are optional organisational labels, independent of directories, branches, tabs, and PTY lifetime. Socket clients and approved plugins can place any workspace, including non-Git directories, at an arbitrarily nested `group_path`:

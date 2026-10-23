@@ -133,6 +133,8 @@ func (t *State) handleSTR() {
 			} else {
 				// TODO: redraw
 			}
+		case 7501:
+			t.handleProgramStatus(s.args[1:])
 		default:
 			t.logf("unknown OSC command %d\n", d)
 			// TODO: s.dump()
@@ -150,6 +152,41 @@ func (t *State) handleSTR() {
 
 		t.logf("unhandled STR sequence '%c'\n", s.typ)
 		// t.str.dump()
+	}
+}
+
+// programStatusQuery acknowledges Program Status Protocol support. A child
+// asks with OSC 7501;? and enables reporting once the same sequence returns.
+const programStatusQuery = "\x1b]7501;?\x1b\\"
+
+// handleProgramStatus follows OSC 7501 reports, a child's own declaration of
+// whether it is idle, working, blocked on the user, done, or failed. Reports
+// are key=value pairs joined by ':'; only state and app are retained, since
+// the optional message may carry private metadata.
+func (t *State) handleProgramStatus(args []string) {
+	if len(args) == 0 {
+		return
+	}
+	payload := strings.Join(args, ";")
+	if payload == "?" {
+		_, _ = t.w.Write([]byte(programStatusQuery))
+		return
+	}
+	state, app := "", ""
+	for _, pair := range strings.Split(payload, ":") {
+		key, value, _ := strings.Cut(pair, "=")
+		switch key {
+		case "state":
+			state = value
+		case "app":
+			app = value
+		}
+	}
+	switch state {
+	case "clear":
+		t.programState, t.programApp = "", ""
+	case "idle", "working", "blocked", "done", "error":
+		t.programState, t.programApp = state, app
 	}
 }
 

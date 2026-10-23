@@ -17,14 +17,21 @@ type agentSpec struct {
 	busyMatch      string   // screen substring visible while working; "" = spinner
 	idleTitle      string   // terminal-title substring that overrides stale busy UI
 	attentionTitle string   // title substring indicating the agent is waiting on the user
-	custom         bool     // registered from harness.json
+	// Built-in title prefixes for agents that cannot be made to send OSC 7501
+	// reports through ConPTY; matched after reports, before the screen.
+	busyTitlePrefixes []string
+	idleTitlePrefixes []string
+	custom            bool // registered from harness.json
 }
 
 // agentSpecs lists the supported agents in menu/cycle order
 // (alphabetical; custom harnesses append after the built-ins).
 var agentSpecs = []agentSpec{
 	{kind: "codex", binary: "codex", resume: []string{"resume", "--last"}, resumeFirst: true},
-	{kind: "claude", binary: "claude", resume: []string{"--continue"}},
+	// Claude Code animates ◐/◑ in its title during a turn and shows ✳ when
+	// idle. Its OSC 7501 support needs a probe reply ConPTY never delivers.
+	{kind: "claude", binary: "claude", resume: []string{"--continue"},
+		busyTitlePrefixes: []string{"◐ ", "◑ "}, idleTitlePrefixes: []string{"✳ "}},
 	{kind: "pi", binary: "pi", resume: []string{"--continue"}},
 	{kind: "zot", binary: "zot", resume: []string{"--continue"}},
 }
@@ -76,9 +83,11 @@ func (m Model) paneAgentKind(currentPane *pane) string {
 	return ""
 }
 
-// paneAgentTitleState interprets optional machine-readable title markers from
-// custom harnesses. Attention and idle titles override stale on-screen
-// spinners; an empty result leaves normal screen-based detection in charge.
+// paneAgentTitleState interprets machine-readable agent state: an OSC 7501
+// program status report first, then optional title markers from custom
+// harnesses. The result is "working", "attention", "idle", or empty. A
+// reported state overrides on-screen spinners in both directions; an empty
+// result leaves normal screen-based detection in charge.
 func (m Model) paneAgentTitleState(currentPane *pane) string {
 	if currentPane == nil || currentPane.term == nil || !currentPane.running {
 		return ""
@@ -88,7 +97,25 @@ func (m Model) paneAgentTitleState(currentPane *pane) string {
 	if spec == nil {
 		return ""
 	}
+	switch status, _ := currentPane.term.ProgramStatus(); status {
+	case "working":
+		return "working"
+	case "blocked":
+		return "attention"
+	case "idle", "done", "error":
+		return "idle"
+	}
 	title := currentPane.term.Title()
+	for _, prefix := range spec.busyTitlePrefixes {
+		if strings.HasPrefix(title, prefix) {
+			return "working"
+		}
+	}
+	for _, prefix := range spec.idleTitlePrefixes {
+		if strings.HasPrefix(title, prefix) {
+			return "idle"
+		}
+	}
 	if spec.attentionTitle != "" && strings.Contains(title, spec.attentionTitle) {
 		return "attention"
 	}

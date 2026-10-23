@@ -106,6 +106,11 @@ type State struct {
 	title         string
 	colorOverride map[Color]Color
 
+	// programState and programApp hold the latest OSC 7501 report; both are
+	// empty until a child reports or after it clears its status.
+	programState string
+	programApp   string
+
 	// history holds lines that scrolled off the top of the primary screen
 	// (never the alt screen), newest last, capped at historyLimit.
 	history       [][]Glyph
@@ -232,6 +237,12 @@ func (t *State) Mode() ModeFlag {
 // Title returns the current title set via the tty.
 func (t *State) Title() string {
 	return t.title
+}
+
+// ProgramStatus returns the latest OSC 7501 state and reporting app, or empty
+// strings when no child has reported (callers must hold the state lock).
+func (t *State) ProgramStatus() (state, app string) {
+	return t.programState, t.programApp
 }
 
 /*

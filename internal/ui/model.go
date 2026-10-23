@@ -2330,6 +2330,9 @@ func (m Model) paneBusyWithTitle(currentPane *pane, titleState string) bool {
 	if kind == "" || !currentPane.running || currentPane.term == nil {
 		return false
 	}
+	if titleState == "working" {
+		return true
+	}
 	if titleState != "" {
 		return false
 	}

@@ -2,6 +2,7 @@ package term
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -99,12 +100,29 @@ func TestScrollbackAndSelection(t *testing.T) {
 	}
 }
 
+func TestPaneEnvKeepsUserProgramStatusChoice(t *testing.T) {
+	t.Setenv("ZOT_PROGRAM_STATUS", "0")
+	var values []string
+	for _, entry := range PaneEnv() {
+		if value, ok := strings.CutPrefix(entry, "ZOT_PROGRAM_STATUS="); ok {
+			values = append(values, value)
+		}
+	}
+	if len(values) != 1 || values[0] != "0" {
+		t.Fatalf("ZOT_PROGRAM_STATUS values = %q, want only the user's 0", values)
+	}
+}
+
 func TestPaneEnv(t *testing.T) {
 	t.Setenv("KITTY_WINDOW_ID", "7")
 	t.Setenv("TERM_PROGRAM", "ghostty")
 	t.Setenv("TERM", "xterm-kitty")
 	t.Setenv("HRDX", "stale")
 	t.Setenv("MY_APP_SETTING", "kept")
+	for _, name := range programStatusVars {
+		t.Setenv(name, "")
+		os.Unsetenv(name) // t.Setenv restores the original value
+	}
 
 	env := PaneEnv()
 	got := map[string]string{}
@@ -126,6 +144,11 @@ func TestPaneEnv(t *testing.T) {
 	}
 	if got["MY_APP_SETTING"] != "kept" {
 		t.Fatal("unrelated variables must survive")
+	}
+	for _, name := range []string{"ZOT_PROGRAM_STATUS", "PI_PROGRAM_STATUS"} {
+		if got[name] != "1" {
+			t.Fatalf("%s = %q, want 1 so the agent reports its state", name, got[name])
+		}
 	}
 	// No duplicate keys: the appended values must be the only ones.
 	count := 0
