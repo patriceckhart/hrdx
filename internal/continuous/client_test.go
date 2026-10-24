@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"runtime"
 	"testing"
 
 	"github.com/patriceckhart/hrdx/internal/continuous"
@@ -127,8 +128,12 @@ func TestExecutionStates(t *testing.T) {
 }
 
 func TestRemoteProfilesRequireTLSAndToken(t *testing.T) {
-	if !continuous.IsRemoteAddress("example.com:7000") || continuous.IsRemoteAddress("/tmp/a:b.sock") || continuous.IsRemoteAddress("./host.sock") {
+	if !continuous.IsRemoteAddress("example.com:7000") || continuous.IsRemoteAddress("/tmp/a:b.sock") || continuous.IsRemoteAddress("./host.sock") ||
+		continuous.IsRemoteAddress(`\\.\pipe\zot`) {
 		t.Fatal("IsRemoteAddress misclassifies addresses")
+	}
+	if runtime.GOOS == "windows" && continuous.IsRemoteAddress(`C:\store\host.sock`) {
+		t.Fatal("a drive-letter path was classified as remote")
 	}
 	if !continuous.IsLoopbackAddress("127.0.0.1:7000") || !continuous.IsLoopbackAddress("localhost:1") || continuous.IsLoopbackAddress("example.com:7000") {
 		t.Fatal("IsLoopbackAddress misclassifies addresses")

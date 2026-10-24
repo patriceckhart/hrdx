@@ -137,7 +137,10 @@ func (p *Pool) Close() {
 
 // IsRemoteAddress reports a host:port address rather than a local endpoint.
 func IsRemoteAddress(address string) bool {
-	if filepath.IsAbs(address) || strings.HasPrefix(address, ".") || strings.HasPrefix(address, `\\.\pipe\`) {
+	// A rooted path ("/x" or "\x") is local on every platform; Windows
+	// does not treat it as absolute without a drive letter.
+	if filepath.IsAbs(address) || strings.HasPrefix(address, "/") || strings.HasPrefix(address, `\`) ||
+		strings.HasPrefix(address, ".") {
 		return false
 	}
 	return strings.Contains(address, ":")

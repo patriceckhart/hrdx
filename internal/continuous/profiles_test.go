@@ -85,8 +85,9 @@ func TestManagedProfileIsStablePerProject(t *testing.T) {
 	if !strings.HasPrefix(a.Address, a.Store) || a.CWD != "/work/a" {
 		t.Fatalf("managed profile = %+v", a)
 	}
-	if CheckAddress(strings.Repeat("x", 200)) == nil {
-		t.Fatal("overlong socket path accepted")
+	// Windows uses named pipes, which have no socket path length limit.
+	if err := CheckAddress(strings.Repeat("x", 200)); (err == nil) != (runtime.GOOS == "windows") {
+		t.Fatalf("CheckAddress(200 bytes) = %v on %s", err, runtime.GOOS)
 	}
 }
 
