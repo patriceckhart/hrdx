@@ -5,9 +5,15 @@ import { available, bridge, errorMessage } from "@/lib/bridge"
 import type { UpdateInfo } from "@/lib/types"
 import styles from "./App.module.css"
 
-const recheckMs = 6 * 60 * 60 * 1000
+// GitHub allows 60 unauthenticated API calls an hour, so an hourly check
+// plus throttled focus checks stays far below the limit.
+const recheckMs = 60 * 60 * 1000
+const focusThrottleMs = 10 * 60 * 1000
 
-/** Offers a newer release with a one-click install. Checks at launch and every six hours. */
+/**
+ * Offers a newer release with a one-click install. Checks at launch, every
+ * hour, and when the window regains focus (at most every ten minutes).
+ */
 export default function UpdateNotice() {
   const [info, setInfo] = useState<UpdateInfo | null>(null)
   const [dismissed, setDismissed] = useState("")
@@ -16,14 +22,24 @@ export default function UpdateNotice() {
 
   useEffect(() => {
     if (!available()) return
-    const check = () =>
+    let last = 0
+    const check = () => {
+      last = Date.now()
       void bridge
         .updateCheck()
         .then(setInfo)
         .catch(() => undefined)
+    }
+    const onFocus = () => {
+      if (Date.now() - last >= focusThrottleMs) check()
+    }
     check()
     const timer = setInterval(check, recheckMs)
-    return () => clearInterval(timer)
+    window.addEventListener("focus", onFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [])
 
   if (!info?.available || dismissed === info.latest) return null
