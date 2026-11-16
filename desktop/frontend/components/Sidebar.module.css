@@ -109,12 +109,37 @@
 }
 
 .workspace {
+  position: relative;
   border-radius: 8px;
   margin-bottom: 2px;
 }
 
-.workspace[data-drop] {
-  box-shadow: inset 0 2px 0 var(--hrdx-accent);
+/* Drop marker: a line above or below the workspace under the pointer. */
+.workspace[data-drop]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--hrdx-accent);
+  pointer-events: none;
+}
+
+.workspace[data-drop="before"]::after {
+  top: -2px;
+}
+
+.workspace[data-drop="after"]::after {
+  bottom: -2px;
+}
+
+.workspace[data-dragging] {
+  opacity: 0.5;
+}
+
+.workspaceRow {
+  touch-action: none;
 }
 
 .workspaceRow {

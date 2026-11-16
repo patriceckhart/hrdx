@@ -3,6 +3,33 @@ import { controlByte, keyName, PrefixMachine } from "../lib/keys"
 import { DIVIDER, dropZone, floatRect, layoutTree, ratioAt, withRatio, zoneRect } from "../lib/layout"
 import { ansi256, cssColor, cssVariables, xtermTheme } from "../lib/theme"
 import type { NodeView } from "../lib/types"
+import { reorderTarget } from "../lib/reorder"
+
+// Mirrors core.WorkspaceReorder: remove `from`, then insert at `to`.
+const moved = (items: string[], from: number, to: number | null) => {
+  if (to === null) return items
+  const next = items.filter((_, index) => index !== from)
+  next.splice(to, 0, items[from]!)
+  return next
+}
+
+describe("workspace reorder", () => {
+  const items = ["a", "b", "c", "d"]
+  test("lands exactly where dropped", () => {
+    expect(moved(items, 0, reorderTarget(0, 2, false))).toEqual(["b", "a", "c", "d"])
+    expect(moved(items, 0, reorderTarget(0, 2, true))).toEqual(["b", "c", "a", "d"])
+    expect(moved(items, 0, reorderTarget(0, 3, true))).toEqual(["b", "c", "d", "a"])
+    expect(moved(items, 3, reorderTarget(3, 0, false))).toEqual(["d", "a", "b", "c"])
+    expect(moved(items, 3, reorderTarget(3, 1, true))).toEqual(["a", "b", "d", "c"])
+  })
+  test("no-op drops are ignored", () => {
+    expect(reorderTarget(1, 1, false)).toBeNull()
+    expect(reorderTarget(1, 1, true)).toBeNull()
+    expect(reorderTarget(1, 0, true)).toBeNull()
+    expect(reorderTarget(1, 2, false)).toBeNull()
+    expect(reorderTarget(-1, 2, false)).toBeNull()
+  })
+})
 
 const ev = (key: string, mods: Partial<Record<"ctrlKey" | "altKey" | "shiftKey" | "metaKey", boolean>> = {}, code?: string) => ({
   key,

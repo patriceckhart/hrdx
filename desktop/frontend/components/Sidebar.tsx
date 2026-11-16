@@ -5,6 +5,7 @@ import { bridge } from "@/lib/bridge"
 import { report } from "@/lib/actions"
 import { tabLabel } from "@/lib/store"
 import type { PaneView, View, WorkspaceView } from "@/lib/types"
+import { DRAG_THRESHOLD, reorderTarget } from "@/lib/reorder"
 import { openModal } from "@/lib/ui"
 import { AgentIcon, LineIcon, WorkspaceIcon } from "./Icons"
 import { paneStatus } from "./PaneFrame"
@@ -48,8 +49,51 @@ export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu }
   const collapsed = view.sidebar_collapsed
   const settingsKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘," : ""
   const [width, setWidth] = useState<number | null>(null)
-  const [dragOver, setDragOver] = useState<number | null>(null)
-  const dragFrom = useRef<number | null>(null)
+  // Drop marker: the workspace under the pointer and which half it is over.
+  const [dragOver, setDragOver] = useState<{ index: number; after: boolean } | null>(null)
+  const [dragging, setDragging] = useState<number | null>(null)
+  const suppressClick = useRef(false)
+
+  // Workspaces reorder with pointer events, not HTML5 drag and drop: Wails
+  // swallows native drops (DisableWebViewDrop) so `drop` never fires.
+  const startReorder = (event: PointerEvent, from: number) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("[data-no-drag]")) return
+    const startX = event.clientX
+    const startY = event.clientY
+    let active = false
+    let target: { index: number; after: boolean } | null = null
+    const hit = (x: number, y: number) => {
+      const element = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-ws-index]")
+      if (!element) return null
+      const rect = element.getBoundingClientRect()
+      return { index: Number(element.dataset.wsIndex), after: y > rect.top + rect.height / 2 }
+    }
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      if (!active) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD) return
+        active = true
+        setDragging(from)
+      }
+      target = hit(moveEvent.clientX, moveEvent.clientY)
+      setDragOver(target)
+    }
+    const up = () => {
+      window.removeEventListener("pointermove", move)
+      window.removeEventListener("pointerup", up)
+      window.removeEventListener("pointercancel", up)
+      setDragging(null)
+      setDragOver(null)
+      if (!active) return
+      // The release also fires a click on the row: don't select by accident.
+      suppressClick.current = true
+      setTimeout(() => (suppressClick.current = false), 0)
+      const to = target ? reorderTarget(from, target.index, target.after) : null
+      if (to !== null) report(bridge.workspaceReorder(from, to))
+    }
+    window.addEventListener("pointermove", move)
+    window.addEventListener("pointerup", up)
+    window.addEventListener("pointercancel", up)
+  }
   const shown = collapsed ? COLLAPSED : (width ?? view.sidebar_width)
 
   const resize = (event: PointerEvent) => {
@@ -102,39 +146,23 @@ export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu }
         key={index}
         className={styles.workspace}
         data-selected={selected || undefined}
-        data-drop={dragOver === index || undefined}
-        draggable
-        onDragStart={(event) => {
-          dragFrom.current = index
-          event.dataTransfer.effectAllowed = "move"
-        }}
-        onDragOver={(event) => {
-          if (dragFrom.current === null) return
-          event.preventDefault()
-          setDragOver(index)
-        }}
-        onDragLeave={() => setDragOver(null)}
-        onDrop={(event) => {
-          event.preventDefault()
-          const from = dragFrom.current
-          dragFrom.current = null
-          setDragOver(null)
-          if (from !== null && from !== index) report(bridge.workspaceReorder(from, index))
-        }}
-        onDragEnd={() => {
-          dragFrom.current = null
-          setDragOver(null)
-        }}
+        data-ws-index={index}
+        data-drop={dragOver?.index === index && dragging !== index ? (dragOver.after ? "after" : "before") : undefined}
+        data-dragging={dragging === index || undefined}
       >
         <div
           className={styles.workspaceRow}
           title={workspace.path}
-          onClick={() => report(bridge.workspaceSelect(index))}
+          onPointerDown={(event) => startReorder(event, index)}
+          onClick={() => {
+            if (!suppressClick.current) report(bridge.workspaceSelect(index))
+          }}
           onContextMenu={(event) => onWorkspaceMenu(event, index)}
         >
           {view.workspace_folding ? (
             <span
               className={styles.fold}
+              data-no-drag
               onClick={(event) => {
                 event.stopPropagation()
                 report(bridge.workspaceSetFolded(index, !workspace.folded))
