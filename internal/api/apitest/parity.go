@@ -73,6 +73,9 @@ func Encode(method string, reply api.Reply, dirs ...string) (json.RawMessage, er
 		placeholder := "$DIR" + string(rune('A'+index))
 		quoted, _ := json.Marshal(dir)
 		encoded = bytes.ReplaceAll(encoded, bytes.Trim(quoted, `"`), []byte(placeholder))
+		// Windows joins paths below the placeholder with an escaped
+		// backslash. Normalize so one fixture serves every platform.
+		encoded = bytes.ReplaceAll(encoded, []byte(placeholder+`\\`), []byte(placeholder+"/"))
 		name, _ := json.Marshal(filepath.Base(dir))
 		encoded = bytes.ReplaceAll(encoded, name, []byte(`"`+strings.ToLower(placeholder[1:])+`"`))
 	}

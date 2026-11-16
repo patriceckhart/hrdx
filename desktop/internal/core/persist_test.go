@@ -12,12 +12,15 @@ import (
 // tuiFixture is a state file as the TUI writes it, including fields the
 // desktop app does not implement. Paths are synthetic.
 func tuiFixture(dir string) string {
+	// Quote the path as JSON so Windows backslashes stay valid escapes.
+	quoted, _ := json.Marshal(dir)
+	cwd := string(quoted)
 	return `{
   "workspaces": [
     {
       "group_path": ["work"],
       "name": "api",
-      "cwd": "` + dir + `",
+      "cwd": ` + cwd + `,
       "tabs": [
         {
           "name": "main",
@@ -40,7 +43,7 @@ func tuiFixture(dir string) string {
     },
     {
       "name": "legacy",
-      "cwd": "` + dir + `",
+      "cwd": ` + cwd + `,
       "panes": [{"kind": "shell", "name": "old"}, {"kind": "claude", "name": "c"}],
       "layout": {"vertical": false, "ratio": 0.3, "a": {"pane": 0}, "b": {"pane": 1}},
       "selected": 1
@@ -93,7 +96,9 @@ func TestRestoreSnapshotPreservesTUIFields(t *testing.T) {
 func TestDurablePlaceholderIsNeverStarted(t *testing.T) {
 	dir := t.TempDir()
 	var saved state.State
-	_ = json.Unmarshal([]byte(tuiFixture(dir)), &saved)
+	if err := json.Unmarshal([]byte(tuiFixture(dir)), &saved); err != nil {
+		t.Fatal(err)
+	}
 	launcher := newFakeLauncher(true)
 	m := newModel(Config{DefaultAgent: "zot", Shell: "/bin/sh"}, saved, launcher, Hooks{}, nil, prefsZero())
 	m.post = func(func()) {}
