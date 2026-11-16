@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/patriceckhart/hrdx/internal/holder"
+	"github.com/patriceckhart/hrdx/internal/paths"
 )
 
 // A stub holder speaks the holder wire protocol just well enough for the
@@ -120,7 +121,7 @@ func startStubHolder(t *testing.T, statePath string, sessions ...map[string]any)
 
 func startStubHolderMismatch(t *testing.T, statePath string, mismatch bool, sessions ...map[string]any) *stubHolder {
 	t.Helper()
-	socket := legacySocketPaths(statePath).holder
+	socket := paths.Legacy(statePath).Holder
 	if err := os.MkdirAll(filepath.Dir(socket), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func TestStopReleasesHolderWhilePrompting(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	input := promptReader(func(p []byte) (int, error) {
 		// A TUI must be able to reconnect while the user considers the prompt.
-		client, err := holder.Connect(legacySocketPaths(statePath).holder)
+		client, err := holder.Connect(paths.Legacy(statePath).Holder)
 		if err != nil {
 			t.Errorf("holder unavailable during prompt: %v", err)
 		} else {
@@ -291,7 +292,7 @@ func TestStopRefusesAttachedTUIAfterPrompt(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	input := promptReader(func(p []byte) (int, error) {
 		var err error
-		attached, err = holder.Connect(legacySocketPaths(statePath).holder)
+		attached, err = holder.Connect(paths.Legacy(statePath).Holder)
 		if err != nil {
 			t.Errorf("TUI could not reconnect during prompt: %v", err)
 		}

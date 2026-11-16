@@ -1,13 +1,9 @@
 package ui
 
 import (
-	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
 )
 
 type branchInfo struct {
@@ -26,70 +22,10 @@ func (m Model) gitBranch(cwd string) branchInfo {
 	}
 	entry := branchInfo{value: readGitBranch(cwd), checked: time.Now()}
 	if entry.value != "" {
-		entry.ahead, entry.behind = readGitAheadBehind(cwd)
+		entry.ahead, entry.behind = gitinfo.AheadBehind(cwd)
 	}
 	m.branches[cwd] = entry
 	return entry
 }
 
-// readGitBranch resolves .git/HEAD without running git. Worktrees and
-// submodules use a ".git" file pointing at the real git dir.
-func readGitBranch(cwd string) string {
-	gitPath := filepath.Join(cwd, ".git")
-	info, err := os.Stat(gitPath)
-	if err != nil {
-		return ""
-	}
-	gitDir := gitPath
-	if !info.IsDir() {
-		content, err := os.ReadFile(gitPath)
-		if err != nil {
-			return ""
-		}
-		line := strings.TrimSpace(string(content))
-		if !strings.HasPrefix(line, "gitdir:") {
-			return ""
-		}
-		gitDir = strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
-		if !filepath.IsAbs(gitDir) {
-			gitDir = filepath.Join(cwd, gitDir)
-		}
-	}
-	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
-	if err != nil {
-		return ""
-	}
-	line := strings.TrimSpace(string(head))
-	if strings.HasPrefix(line, "ref: ") {
-		ref := strings.TrimPrefix(line, "ref: ")
-		return strings.TrimPrefix(ref, "refs/heads/")
-	}
-	if len(line) >= 7 {
-		return line[:7]
-	}
-	return ""
-}
-
-// readGitAheadBehind returns how many commits HEAD is ahead of and behind
-// its upstream. Zeroes when there is no upstream or git is unavailable. The
-// call is bounded so a hung git can never stall rendering for long.
-func readGitAheadBehind(cwd string) (ahead, behind int) {
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		return 0, 0
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	command := exec.CommandContext(ctx, gitPath, "-C", cwd, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
-	output, err := command.Output()
-	if err != nil {
-		return 0, 0
-	}
-	fields := strings.Fields(strings.TrimSpace(string(output)))
-	if len(fields) != 2 {
-		return 0, 0
-	}
-	ahead, _ = strconv.Atoi(fields[0])
-	behind, _ = strconv.Atoi(fields[1])
-	return ahead, behind
-}
+func readGitBranch(cwd string) string { return gitinfo.Branch(cwd) }

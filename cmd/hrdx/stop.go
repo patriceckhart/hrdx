@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/patriceckhart/hrdx/internal/holder"
+	"github.com/patriceckhart/hrdx/internal/paths"
 	"github.com/patriceckhart/hrdx/internal/state"
 )
 
@@ -131,13 +132,13 @@ func confirmStop(in io.Reader, stderr io.Writer, sessions []holder.SessionInfo) 
 // legacy holder socket beside the state file first, then the runtime
 // fallback. A busy holder is reported as-is rather than retried elsewhere.
 func dialHolderManager(statePath string) (*holder.Manager, error) {
-	manager, err := holder.DialManager(legacySocketPaths(statePath).holder, stopTimeout)
+	manager, err := holder.DialManager(paths.Legacy(statePath).Holder, stopTimeout)
 	if err == nil || !errors.Is(err, holder.ErrNoHolder) {
 		return manager, err
 	}
-	sockets, pathErr := runtimeSocketPaths(statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"))
+	sockets, pathErr := paths.Runtime(statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"))
 	if pathErr != nil {
 		return nil, err
 	}
-	return holder.DialManager(sockets.holder, stopTimeout)
+	return holder.DialManager(sockets.Holder, stopTimeout)
 }

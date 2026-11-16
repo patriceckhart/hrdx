@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/patriceckhart/hrdx/internal/paths"
 	"github.com/patriceckhart/hrdx/internal/plugin"
 	"github.com/patriceckhart/hrdx/internal/state"
 )
@@ -29,10 +30,10 @@ func runPluginControl(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "hrdx plugins: use status, or start/stop/restart/reload --id ID, with a nonempty --state location")
 		return 2
 	}
-	connection, err := net.DialTimeout("unix", legacySocketPaths(*statePath).api, 5*time.Second)
+	connection, err := net.DialTimeout("unix", paths.Legacy(*statePath).API, 5*time.Second)
 	if err != nil {
-		if fallback, pathErr := runtimeSocketPaths(*statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR")); pathErr == nil {
-			connection, err = net.DialTimeout("unix", fallback.api, 5*time.Second)
+		if fallback, pathErr := paths.Runtime(*statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR")); pathErr == nil {
+			connection, err = net.DialTimeout("unix", fallback.API, 5*time.Second)
 		}
 	}
 	if err != nil {

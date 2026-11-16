@@ -1,0 +1,71 @@
+.view {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  margin: 0 12px 12px 2px;
+  overflow: hidden;
+}
+
+.view[data-dragging="x"] {
+  cursor: col-resize;
+}
+
+.view[data-dragging="y"] {
+  cursor: row-resize;
+}
+
+.view[data-dragging="move"] {
+  cursor: grabbing;
+}
+
+.view[data-dragging] :global(.xterm) {
+  pointer-events: none;
+}
+
+.dropZone {
+  position: absolute;
+  z-index: 15;
+  border: 2px solid color-mix(in srgb, var(--hrdx-accent) 80%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--hrdx-accent) 14%, transparent);
+  pointer-events: none;
+  transition: left 80ms ease, top 80ms ease, width 80ms ease, height 80ms ease;
+}
+
+.dropZone[data-swap] {
+  border-style: dashed;
+}
+
+.divider {
+  position: absolute;
+  z-index: 10;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.divider[data-vertical] {
+  cursor: col-resize;
+}
+
+.divider::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.divider[data-vertical]::after {
+  width: 2px;
+}
+
+.divider:not([data-vertical])::after {
+  height: 2px;
+}
+
+.divider:hover::after {
+  background: color-mix(in srgb, var(--hrdx-accent) 60%, transparent);
+}

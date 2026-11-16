@@ -43,8 +43,18 @@ Put behavior in the package that owns the concern:
 | `internal/vt` | Escape parsing, terminal state, glyphs, colors, history, and screen model |
 | `internal/update` | Update checks and self-update |
 | `internal/winproc` | Windows foreground-process and process-tree behavior |
+| `internal/agent` | Agent registry, `harness.json` harnesses, binary resolution, launch arguments, busy and attention classification |
+| `internal/layout` | Split tree operations, completeness validation, fallback layout, conversion to and from `state.Node` |
+| `internal/paths` | Socket path selection, default shell, directory resolution and completion |
+| `internal/theme` | Theme files and built-in presets as plain color strings |
+| `internal/sound` | Notification sounds, `sounds.json`, playback |
+| `internal/keymap` | Prefix actions, defaults, and `keys.json` overrides |
+| `internal/gitinfo` | Branch, ahead and behind counts, and default git group labels |
+| `desktop/` | hrdx Desktop, a nested Go module (Wails v2 and a static Next.js bundle) sharing the packages above |
 
-The API server must not mutate UI state directly. Terminal escape parsing must not leak into UI layout code. Persisted structures belong in `internal/state`, while conversion between live and saved state belongs in `internal/ui/persist.go`.
+The API server must not mutate UI state directly. Terminal escape parsing must not leak into UI layout code. Persisted structures belong in `internal/state`, while conversion between live and saved state belongs in `internal/ui/persist.go` for the TUI and `desktop/internal/core/persist.go` for the desktop app.
+
+Logic both frontends need lives in the shared packages, with thin wrappers in `internal/ui`. Do not reimplement it in `desktop/`. The desktop core loop in `desktop/internal/core` owns its live state exactly as the Bubble Tea loop owns the TUI's, and answers the socket API with the same result shapes. `desktop/internal/core/testdata/api_parity.json` is recorded from the TUI (see `internal/ui/api_parity_test.go`) and must be re-recorded when TUI answers change.
 
 ## Correctness contracts
 
@@ -172,6 +182,22 @@ Match validation effort to the change, then finish with repository-wide checks w
 
 CI runs vet, a gofmt check, and the race-enabled suite on Linux, macOS, and Windows.
 
+The desktop app is a nested module that root `go vet ./...` and `go test ./...` skip. When `desktop/` or any shared `internal/` package changes, also run its ladder (CI runs it in the `desktop` job):
+
+```sh
+cd desktop
+go vet ./...
+go test -race ./...
+cd frontend
+bun install --frozen-lockfile
+bun run typecheck
+bun run lint
+bun test
+bun run build
+```
+
+On Linux add `-tags webkit2_41` to the Go commands. Never start the Next.js dev server in automation.
+
 `make check` formats every Go file before running vet and tests. Do not use it blindly when unrelated Go changes are present, because formatting them would modify user-owned work.
 
 Do not hide failures, weaken assertions, or claim checks that were not run. If a check cannot run, state the command and exact reason.
@@ -195,6 +221,7 @@ hrdx's single-binary design and small footprint are product requirements.
 - Review transitive dependencies, binary-size effects, and platform support.
 - Keep `go.mod` and `go.sum` changes limited to the requested work.
 - Do not add a second terminal emulator, process supervisor, or UI framework for behavior the current packages can support.
+- Desktop work must not add dependencies to the root `go.mod`. Wails and frontend packages belong to `desktop/go.mod` and `desktop/frontend/package.json` only. New frontend runtime dependencies beyond `next`, `react`, `react-dom`, and the `@xterm` packages need a stated reason.
 
 ## Source-control and release safety
 
@@ -212,7 +239,7 @@ When a commit is requested:
 - use a concise, imperative subject
 - never bypass hooks without explicit approval
 
-Every push to `main` that passes CI normally creates and pushes a patch tag, then publishes a release. Treat a push to `main` as a release operation. Do not add `[release=skip]` unless the user or maintainer explicitly requests a release skip.
+Every push to `main` that passes CI normally creates and pushes a patch tag, then publishes a release with the CLI archives and the desktop app builds (`.dmg`, Windows `.zip`, Linux `.tar.gz`). Treat a push to `main` as a release operation. Do not add `[release=skip]` unless the user or maintainer explicitly requests a release skip.
 
 When a pull request is requested, run the full validation suite first, summarize compatibility and user-visible effects, and mention failed or skipped checks.
 

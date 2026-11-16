@@ -13,9 +13,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/patriceckhart/hrdx/internal/agent"
 	"github.com/patriceckhart/hrdx/internal/api"
 	"github.com/patriceckhart/hrdx/internal/continuous"
 	"github.com/patriceckhart/hrdx/internal/holder"
+	"github.com/patriceckhart/hrdx/internal/layout"
+	"github.com/patriceckhart/hrdx/internal/paths"
 	"github.com/patriceckhart/hrdx/internal/plugin"
 	"github.com/patriceckhart/hrdx/internal/state"
 	"github.com/patriceckhart/hrdx/internal/term"
@@ -502,7 +505,7 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 	harnessProblem := ""
 	keymapOverrides := map[string]string{}
 	if statePath != "" {
-		harnessProblem = loadHarnesses(filepath.Dir(statePath))
+		harnessProblem = agent.LoadHarnesses(filepath.Dir(statePath))
 		overrides, keymapProblem := loadKeymap(filepath.Dir(statePath))
 		keymapOverrides = overrides
 		if keymapProblem != "" {
@@ -626,7 +629,7 @@ func (m *Model) addPaneSide(target *space, kind string, vertical, before bool) *
 	} else {
 		focused := currentTab.panes[currentTab.selected]
 		if focused.floating != nil {
-			currentTab.layout.walk(func(candidate *pane) { focused = candidate })
+			currentTab.layout.Walk(func(candidate *pane) { focused = candidate })
 		}
 		insertAtSide(currentTab.layout, focused, newPane, vertical, before)
 	}
@@ -659,27 +662,7 @@ func (m *Model) newPane(target *space, kind string) *pane {
 }
 
 // resolveDir expands ~, makes the path absolute, and requires a directory.
-func resolveDir(value string) (string, error) {
-	if value == "~" || strings.HasPrefix(value, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		value = filepath.Join(home, strings.TrimPrefix(value, "~"))
-	}
-	path, err := filepath.Abs(value)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("%s does not exist", path)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("%s is not a directory", path)
-	}
-	return path, nil
-}
+func resolveDir(value string) (string, error) { return paths.ResolveDir(value) }
 
 // updateInfoMsg delivers the async update check result.
 type updateInfoMsg struct{ info update.Info }
@@ -751,17 +734,11 @@ func (m Model) startPTY(owner *space, target *pane) tea.Cmd {
 		command, args = durableCommand, durableArgs
 	} else if spec := agentByKind(target.kind); spec != nil {
 		command = m.config.binaryFor(target.kind)
-		args = append([]string{}, spec.args...)
+		var extra []string
 		if target.kind == "zot" {
-			args = append(args, m.config.ZotArgs...)
+			extra = m.config.ZotArgs
 		}
-		if target.resume && len(spec.resume) > 0 && !contains(args, spec.resume[0]) {
-			if spec.resumeFirst {
-				args = append(append([]string{}, spec.resume...), args...)
-			} else {
-				args = append(args, spec.resume...)
-			}
-		}
+		args = spec.LaunchArgs(extra, target.resume)
 	}
 	cwd := owner.cwd
 	if target.cwd != "" {
@@ -797,49 +774,11 @@ func shellArgsFor(goos string) []string {
 // startHolderPane starts (or reattaches to) a session in the holder and
 // wires its output into a fresh pane terminal.
 func startHolderPane(client *holder.Client, reattach int64, command string, args []string, cwd string, cols, rows int) (*term.Pane, error) {
-	session := reattach
-	if session != 0 {
-		sessions, err := client.List()
-		if err != nil {
-			return nil, fmt.Errorf("inspect holder sessions: %w", err)
-		}
-		if !holderSessionMatchesWorkspace(sessions, session, cwd) {
-			// State and holder writes are independent. After an interrupted
-			// shutdown, a persisted id can refer to a session from another
-			// workspace. Never attach that PTY to the wrong workspace.
-			session = 0
-		}
-	}
-	if session == 0 {
-		started, err := client.Start(command, args, cwd, term.PaneEnv(), cols, rows)
-		if err != nil {
-			return nil, err
-		}
-		session = started
-	}
-	pane := term.NewHolderPane(client, session, cols, rows)
-	running, err := client.Attach(session, cols, rows, pane.Feed)
-	if err != nil {
-		if reattach != 0 {
-			// The session vanished (holder restarted): start fresh.
-			return startHolderPane(client, 0, command, args, cwd, cols, rows)
-		}
-		return nil, err
-	}
-	if !running {
-		pane.MarkExited()
-	}
-	return pane, nil
+	return term.StartHolderPane(client, reattach, command, args, cwd, cols, rows, nil)
 }
 
 func holderSessionMatchesWorkspace(sessions []holder.SessionInfo, session int64, cwd string) bool {
-	wanted := filepath.Clean(cwd)
-	for _, current := range sessions {
-		if current.ID == session {
-			return filepath.Clean(current.CWD) == wanted
-		}
-	}
-	return false
+	return term.HolderSessionMatchesWorkspace(sessions, session, cwd)
 }
 
 // sidebarContentWidth is the width before the sidebar's right border.
@@ -1558,16 +1497,7 @@ func (m *Model) equalizeCurrent() {
 	if currentSpace == nil {
 		return
 	}
-	var walk func(n *splitNode)
-	walk = func(n *splitNode) {
-		if n == nil || n.pane != nil {
-			return
-		}
-		n.ratio = 0.5
-		walk(n.a)
-		walk(n.b)
-	}
-	walk(currentSpace.tab().layout)
+	layout.Equalize(currentSpace.tab().layout)
 	m.resizePanes(currentSpace)
 	m.persist()
 }
@@ -1596,7 +1526,7 @@ func (m *Model) advanceCompletion(delta int) {
 		m.input.CursorEnd()
 		return
 	}
-	matches := completeDir(strings.TrimSpace(m.input.Value()))
+	matches := paths.CompleteDir(strings.TrimSpace(m.input.Value()))
 	if len(matches) == 0 {
 		return
 	}
@@ -1607,7 +1537,7 @@ func (m *Model) advanceCompletion(delta int) {
 	}
 	m.completions = matches
 	m.completion = -1
-	if shared := commonPrefix(matches); len(shared) > len(strings.TrimSpace(m.input.Value())) {
+	if shared := paths.CommonPrefix(matches); len(shared) > len(strings.TrimSpace(m.input.Value())) {
 		m.input.SetValue(shared)
 		m.input.CursorEnd()
 	}
@@ -1722,8 +1652,8 @@ func (m *Model) toggleAgent(kind string) tea.Cmd {
 	}
 	if !m.disabled[kind] {
 		enabled := 0
-		for _, spec := range agentSpecs {
-			if !m.disabled[spec.kind] {
+		for _, spec := range agent.Specs {
+			if !m.disabled[spec.Kind] {
 				enabled++
 			}
 		}
@@ -2422,13 +2352,13 @@ func (m *Model) applyDrag(localX, localY int) {
 		return
 	}
 	full := m.dragFull
-	if m.drag.vertical {
+	if m.drag.Vertical {
 		if full.w > 0 {
-			m.drag.ratio = clampFloat(float64(localX-full.x)/float64(full.w), 0.1, 0.9)
+			m.drag.Ratio = clampFloat(float64(localX-full.x)/float64(full.w), 0.1, 0.9)
 		}
 	} else {
 		if full.h > 0 {
-			m.drag.ratio = clampFloat(float64(localY-full.y)/float64(full.h), 0.1, 0.9)
+			m.drag.Ratio = clampFloat(float64(localY-full.y)/float64(full.h), 0.1, 0.9)
 		}
 	}
 	if currentSpace := m.currentSpace(); currentSpace != nil {
@@ -2491,16 +2421,11 @@ func (m Model) paneBusyWithTitle(currentPane *pane, titleState string) bool {
 	if kind == "" || !currentPane.running || currentPane.term == nil {
 		return false
 	}
-	if titleState == "working" {
-		return true
+	spec := agentByKind(kind)
+	if spec == nil {
+		spec = &agentSpec{}
 	}
-	if titleState != "" {
-		return false
-	}
-	if spec := agentByKind(kind); spec != nil && spec.busyMatch != "" {
-		return currentPane.term.HasScreenText(spec.busyMatch)
-	}
-	return currentPane.term.HasSpinner()
+	return spec.Busy(titleState, currentPane.term.HasScreenText, currentPane.term.HasSpinner)
 }
 
 // sidebarPaneIcon uses a shared dot shape for shells and agents while
@@ -3539,7 +3464,7 @@ func (m *Model) cyclePane(delta int) {
 
 	ordered := make([]*pane, 0, len(currentTab.panes))
 	if currentTab.layout != nil {
-		currentTab.layout.walk(func(target *pane) { ordered = append(ordered, target) })
+		currentTab.layout.Walk(func(target *pane) { ordered = append(ordered, target) })
 	}
 	for _, target := range currentTab.panes {
 		if target.floating != nil {

@@ -57,6 +57,8 @@ The major ownership boundaries are:
 - `internal/vt`: terminal escape parsing and emulator state
 - `internal/update`: update discovery and self-update behavior
 - `internal/winproc`: Windows process-tree and foreground-process support
+- `internal/agent`, `internal/layout`, `internal/paths`, `internal/theme`, `internal/sound`, `internal/keymap`, `internal/gitinfo`: logic shared by the TUI and the desktop app
+- `desktop/`: hrdx Desktop, a nested Go module with its own `go.mod`
 
 Keep socket framing out of UI code and UI mutation out of the socket server. Keep ANSI parsing in `internal/vt`, PTY mechanics in `internal/term` or `internal/holder`, and persisted representations in `internal/state`.
 
@@ -81,6 +83,23 @@ make test        # run go test ./...
 make check       # format Go files, run go vet, then run tests
 make install     # install cmd/hrdx with go install
 ```
+
+### Desktop app
+
+`desktop/` builds hrdx Desktop and needs more tools than the CLI:
+
+- Go 1.26 or newer (Wails dependencies require it, the root module does not)
+- [bun](https://bun.sh)
+- the Wails v2 CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0`
+- the platform webview: WebKit on macOS 12+, WebView2 on Windows 10+ (bundled with Windows 11), and on Linux `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`
+
+```sh
+cd desktop
+make check       # go vet, go test -race, frontend typecheck, lint, tests, build
+make build       # app bundle in build/bin
+```
+
+On Linux, pass `-tags webkit2_41` to Go commands in `desktop/`. Do not run the Next.js dev server in automated checks.
 
 Tests must not depend on installed coding agents, real credentials, a developer's hrdx state, a live network service, or a particular terminal. Use temporary directories, local sockets, fixtures, synthetic terminal data, and fake process boundaries where practical.
 

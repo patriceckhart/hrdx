@@ -8,6 +8,9 @@ name: release
 #   5. runs goreleaser, which builds binaries for linux/darwin
 #      (amd64 + arm64) and attaches them plus checksums.txt to a fresh
 #      GitHub Release page
+#   6. builds the desktop app (desktop/) on macOS, Windows, and Linux and
+#      uploads a .dmg, a .zip, and a .tar.gz to the same release, each
+#      with a desktop-checksums-<platform>.txt
 #
 # Skip a release by putting [release=skip] anywhere in the commit
 # message - useful for docs-only or ci-only commits. We use a rare
@@ -31,6 +34,9 @@ concurrency:
 
 jobs:
   release:
+    outputs:
+      tag: ${{ steps.bump.outputs.next }}
+      version: ${{ steps.bump.outputs.version }}
     # Only run when ci succeeded and we're on main, and when the head
     # commit doesn't opt out via [release=skip].
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && !contains(github.event.workflow_run.head_commit.message, '[release=skip]') }}
@@ -102,3 +108,132 @@ jobs:
           # goreleaser reads the tag we just pushed and builds binaries
           # for every (goos, goarch) combination in .goreleaser.yaml.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The desktop app (hrdx.app) is built on each platform's own runner,
+  # because Wails links the native webview. Assets are added to the release
+  # goreleaser just published.
+  desktop:
+    needs: release
+    name: desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+            platform: darwin/universal
+          - name: windows
+            os: windows-latest
+            platform: windows/amd64
+          - name: linux
+            os: ubuntu-22.04
+            platform: linux/amd64
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      VERSION: ${{ needs.release.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Step conditions can only see job-level env, so expose whether a
+      # signing certificate is configured here.
+      HAS_MACOS_CERT: ${{ secrets.MACOS_CERTIFICATE != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: set up go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: set up bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: webview packages (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: install wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      - name: stamp version
+        working-directory: desktop
+        run: |
+          # The bundle version (Info.plist, Windows file info) comes from wails.json.
+          jq --arg v "$VERSION" '.info.productVersion = $v' wails.json > wails.json.tmp
+          mv wails.json.tmp wails.json
+
+      - name: build
+        working-directory: desktop
+        run: |
+          tags=""
+          if [ "$RUNNER_OS" = "Linux" ]; then tags="-tags webkit2_41"; fi
+          wails build -clean -platform "${{ matrix.platform }}" $tags \
+            -ldflags "-s -w -X main.version=$VERSION"
+
+      # Optional signing and notarization. Without these secrets the app is
+      # ad-hoc signed and macOS asks users to confirm the first launch.
+      - name: sign and notarize (macos)
+        if: runner.os == 'macOS' && env.HAS_MACOS_CERT == 'true'
+        working-directory: desktop/build/bin
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/sign.keychain-db"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$keychain"
+          security list-keychains -d user -s "$keychain"
+          codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" hrdx.app
+          ditto -c -k --keepParent hrdx.app notarize.zip
+          xcrun notarytool submit notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple hrdx.app
+          rm notarize.zip
+
+      - name: package (macos)
+        if: runner.os == 'macOS'
+        working-directory: desktop/build/bin
+        run: |
+          mkdir dmg
+          cp -R hrdx.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "hrdx $VERSION" -srcfolder dmg -ov -format UDZO \
+            "$GITHUB_WORKSPACE/hrdx-desktop_${VERSION}_macos_universal.dmg"
+
+      - name: package (windows)
+        if: runner.os == 'Windows'
+        working-directory: desktop/build/bin
+        shell: pwsh
+        run: |
+          Compress-Archive -Path hrdx-desktop.exe `
+            -DestinationPath "$env:GITHUB_WORKSPACE/hrdx-desktop_${env:VERSION}_windows_amd64.zip"
+
+      - name: package (linux)
+        if: runner.os == 'Linux'
+        working-directory: desktop/build/bin
+        run: |
+          tar -czf "$GITHUB_WORKSPACE/hrdx-desktop_${VERSION}_linux_amd64.tar.gz" hrdx-desktop
+
+      - name: upload to release
+        run: |
+          for asset in hrdx-desktop_*; do
+            sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"
+          done > "desktop-checksums-${{ matrix.name }}.txt"
+          gh release upload "$TAG" hrdx-desktop_* "desktop-checksums-${{ matrix.name }}.txt" --clobber

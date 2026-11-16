@@ -2,64 +2,20 @@ package ui
 
 import (
 	"os/exec"
-	"path/filepath"
-	"strings"
+
+	"github.com/patriceckhart/hrdx/internal/agent"
 )
 
-// agentSpec describes one supported coding agent CLI, built in or
-// registered as a custom harness from harness.json.
-type agentSpec struct {
-	kind           string
-	binary         string   // default binary name on $PATH
-	args           []string // extra launch args (custom harnesses)
-	resume         []string // args that resume the latest session
-	resumeFirst    bool     // resume args are a subcommand and must come first
-	busyMatch      string   // screen substring visible while working; "" = spinner
-	idleTitle      string   // terminal-title substring that overrides stale busy UI
-	attentionTitle string   // title substring indicating the agent is waiting on the user
-	// Built-in title prefixes for agents that cannot be made to send OSC 7501
-	// reports through ConPTY; matched after reports, before the screen.
-	busyTitlePrefixes []string
-	idleTitlePrefixes []string
-	custom            bool // registered from harness.json
-}
+// agentSpec is the shared agent registry entry.
+type agentSpec = agent.Spec
 
-// agentSpecs lists the supported agents in menu/cycle order
-// (alphabetical; custom harnesses append after the built-ins).
-var agentSpecs = []agentSpec{
-	{kind: "codex", binary: "codex", resume: []string{"resume", "--last"}, resumeFirst: true},
-	// Claude Code animates ◐/◑ in its title during a turn and shows ✳ when
-	// idle. Its OSC 7501 support needs a probe reply ConPTY never delivers.
-	{kind: "claude", binary: "claude", resume: []string{"--continue"},
-		busyTitlePrefixes: []string{"◐ ", "◑ "}, idleTitlePrefixes: []string{"✳ "}},
-	{kind: "pi", binary: "pi", resume: []string{"--continue"}},
-	{kind: "zot", binary: "zot", resume: []string{"--continue"}},
-}
+func agentByKind(kind string) *agentSpec { return agent.ByKind(kind) }
 
-func agentByKind(kind string) *agentSpec {
-	for index := range agentSpecs {
-		if agentSpecs[index].kind == kind {
-			return &agentSpecs[index]
-		}
-	}
-	return nil
-}
-
-func isAgentKind(kind string) bool {
-	return agentByKind(kind) != nil
-}
+func isAgentKind(kind string) bool { return agent.IsAgent(kind) }
 
 // binaryFor resolves the launch binary for an agent kind, honoring
 // per-agent overrides from the CLI flags.
-func (c Config) binaryFor(kind string) string {
-	if override, ok := c.AgentBins[kind]; ok && override != "" {
-		return override
-	}
-	if spec := agentByKind(kind); spec != nil {
-		return spec.binary
-	}
-	return kind
-}
+func (c Config) binaryFor(kind string) string { return agent.BinaryFor(kind, c.AgentBins) }
 
 // paneAgentKind returns the agent kind a pane is effectively running: the
 // pane's own kind for agent panes, or the agent matching the PTY's
@@ -71,16 +27,7 @@ func (m Model) paneAgentKind(currentPane *pane) string {
 	if currentPane.term == nil || !currentPane.running {
 		return ""
 	}
-	foreground := currentPane.term.ForegroundCommand()
-	if foreground == "" {
-		return ""
-	}
-	for _, spec := range agentSpecs {
-		if foreground == spec.binary || foreground == filepath.Base(m.config.binaryFor(spec.kind)) {
-			return spec.kind
-		}
-	}
-	return ""
+	return agent.ForegroundKind(currentPane.term.ForegroundCommand(), m.config.AgentBins)
 }
 
 // paneAgentTitleState interprets machine-readable agent state: an OSC 7501
@@ -97,32 +44,8 @@ func (m Model) paneAgentTitleState(currentPane *pane) string {
 	if spec == nil {
 		return ""
 	}
-	switch status, _ := currentPane.term.ProgramStatus(); status {
-	case "working":
-		return "working"
-	case "blocked":
-		return "attention"
-	case "idle", "done", "error":
-		return "idle"
-	}
-	title := currentPane.term.Title()
-	for _, prefix := range spec.busyTitlePrefixes {
-		if strings.HasPrefix(title, prefix) {
-			return "working"
-		}
-	}
-	for _, prefix := range spec.idleTitlePrefixes {
-		if strings.HasPrefix(title, prefix) {
-			return "idle"
-		}
-	}
-	if spec.attentionTitle != "" && strings.Contains(title, spec.attentionTitle) {
-		return "attention"
-	}
-	if spec.idleTitle != "" && strings.Contains(title, spec.idleTitle) {
-		return "idle"
-	}
-	return ""
+	status, _ := currentPane.term.ProgramStatus()
+	return spec.TitleState(agent.Signals{ProgramStatus: status, Title: currentPane.term.Title()})
 }
 
 // paneDisplayName returns the name a pane should show in lists: its own
@@ -142,9 +65,9 @@ func (m Model) paneDisplayName(currentPane *pane) string {
 // overridden), regardless of the enabled/disabled setting.
 func (m Model) installedAgents() []string {
 	var found []string
-	for _, spec := range agentSpecs {
-		if _, err := exec.LookPath(m.config.binaryFor(spec.kind)); err == nil {
-			found = append(found, spec.kind)
+	for _, spec := range agent.Specs {
+		if _, err := exec.LookPath(m.config.binaryFor(spec.Kind)); err == nil {
+			found = append(found, spec.Kind)
 		}
 	}
 	return found
@@ -161,9 +84,9 @@ func (m Model) availableAgents() []string {
 		}
 	}
 	if len(found) == 0 {
-		for _, spec := range agentSpecs {
-			if !m.disabled[spec.kind] {
-				found = append(found, spec.kind)
+		for _, spec := range agent.Specs {
+			if !m.disabled[spec.Kind] {
+				found = append(found, spec.Kind)
 			}
 		}
 	}

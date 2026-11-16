@@ -496,7 +496,7 @@ The notification section of the settings window has two independent toggles for 
 
 ## Persistence
 
-Quitting hrdx does not kill your sessions. Pane processes live in a small background process (the session holder) that hrdx starts on demand and talks to over a local socket. Close the TUI, reopen it, and every shell and agent reattaches exactly where it was: running commands keep running, scrollback and screen state are replayed, nothing restarts. The holder is the same `hrdx` binary and uses no resources worth mentioning.
+Quitting hrdx does not kill your sessions. Pane processes live in a small background process (the session holder) that hrdx starts on demand and talks to over a local socket. Close the TUI, reopen it, and every shell and agent reattaches exactly where it was: running commands keep running, scrollback and screen state are replayed, nothing restarts. The holder is the same `hrdx` binary and uses no resources worth mentioning. When [hrdx Desktop](#desktop-app) starts it, the holder is the `hrdx-desktop` binary in holder mode instead. Both speak the same protocol, so either frontend reattaches to either holder.
 
 The holder serves one hrdx terminal at a time. Starting hrdx while another terminal is attached exits with `already running in another terminal` instead of opening a second, unpersisted session; quit the other terminal first, or pass a different `--state` file for an independent instance. Only a socket with nothing listening is treated as stale and replaced.
 
@@ -512,6 +512,37 @@ hrdx stop
 
 With no held sessions it stops the holder and exits 0, and it exits 0 when no holder is running. If sessions are still held, it lists them (`id`, command, cwd, running state) and asks `Stop them too? [y/N]`. Only `y`/`Y` kills them; anything else, including a bare Enter or end of input, leaves the holder running and exits 1, so a stray key never discards running shells and agents. `hrdx stop` takes no options and targets the default state location. The holder serves one TUI client at a time, so `stop` works while hrdx is closed; with a TUI attached it reports the holder as busy rather than waiting, so quit the TUI (`ctrl+b q`) first. The prompt does not block a TUI from reconnecting. If held sessions change while you decide, `stop` refuses to shut down and asks you to review them again. Socket access errors are reported as failures rather than as an absent holder. Stopping the holder does not edit saved state: the next launch restores the layout and starts fresh panes for the killed sessions.
 
+## Desktop app
+
+Experimental. hrdx Desktop is a second frontend: the same workspaces, groups, tabs, splits, floating panes, agents, and shells in a native window, with terminals rendered by xterm.js. It lives in `desktop/` as a separate Go module and is built with [Wails v2](https://wails.io) and a static Next.js bundle. The `hrdx` CLI, its binary size, and its build requirements are unchanged.
+
+It shares everything with the TUI: `state.json`, the session holder, `keys.json`, `harness.json`, `sounds.json`, and `themes/`. Quit the TUI and open the desktop app, and every pane reattaches with its running process. Quitting the app and starting `hrdx` works the same in reverse. While it runs, the app serves the same socket API on the same path the TUI would.
+
+Only one frontend can use a state file at a time. If the TUI is attached, the app shows `hrdx is already running in another terminal` with Retry and Quit, starts no panes, and writes no state. A second app window for the same state file focuses the existing one.
+
+Build prerequisites: Go 1.26, [bun](https://bun.sh), the Wails v2 CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0`), and the platform webview (WebKit on macOS 12+, WebView2 on Windows 10+, `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` on Linux, where builds need `-tags webkit2_41`).
+
+```sh
+cd desktop
+make build          # build/bin/hrdx.app on macOS, build/bin/hrdx-desktop elsewhere
+make check          # go vet, go test -race, frontend typecheck, lint, tests, and build
+```
+
+`hrdx-desktop` accepts `--cwd` (repeatable), `--agent`, `--provider`, `--model`, `--reasoning`, `--continue`, `--zot-bin`, `--pi-bin`, `--claude-bin`, `--codex-bin`, `--shell`, `--state`, `--fresh`, `--api`, `--persist`, and `--version`, with the same meanings and defaults as `hrdx`. Without `--cwd` and saved workspaces it opens empty with a New workspace prompt. On macOS it reads `PATH` from your login shell once at startup, so agents installed through Homebrew or `~/.local/bin` resolve as they do in a terminal.
+
+Keys follow the TUI: the prefix (`ctrl+b`, remappable in `keys.json`) and every prefix action work, including `tab` and `shift+tab` repeats until `esc`. Native shortcuts are layered on top: `cmd+q` quit, `cmd+,` settings, `cmd+w` close pane, `cmd+t` new tab, `cmd+k` find, `cmd+c` and `cmd+v` copy and paste (`ctrl+shift+` on Linux and Windows, so plain control keys stay terminal input). Escape and control keys are never reserved. Right-click opens the same scoped context menus, with `menu.register` entries appended. Dividers drag, and a double-click resets one to an even split.
+
+Desktop-only preferences live in `desktop.json` beside `state.json`: window geometry, `font_family`, `font_size`, `line_height`, `cursor_blink`, `scrollback_lines`, and the sidebar width in pixels (the TUI's `sidebar_width` in columns is left alone). A missing or corrupt file means defaults.
+
+Limits in this version:
+
+- Plugins, durable agents, and sub-repository rows are not available. `plugins.*` and `continuous.*` socket methods answer `unknown_method`. Durable panes from a TUI state file show a placeholder and are saved back unchanged, along with every other field the app does not use.
+- Only the visible tab has live terminals. Switching back to a tab, or a webview reload, rebuilds its terminals from a 2 MiB per-pane replay buffer, which bounds the scrollback you get back.
+- xterm.js has no kitty keyboard protocol. When a program enables it, `shift+enter`, `ctrl+enter`, `alt+enter`, modified `tab`, and `ctrl+` punctuation are sent as CSI u sequences. Other keys use legacy encodings.
+- On macOS, the notification setting shows a native banner when an agent you are not looking at finishes or needs input ("website: Claude Code needs your input"). Clicking it focuses that pane. The Dock icon shows the number of panes waiting for you and bounces while the app is in the background. macOS asks for permission on first launch. Linux and Windows keep the sound and in-app markers only.
+- Every release also attaches desktop builds: `hrdx-desktop_<version>_macos_universal.dmg`, `hrdx-desktop_<version>_windows_amd64.zip`, and `hrdx-desktop_<version>_linux_amd64.tar.gz` (needs WebKitGTK 4.1). Builds are unsigned unless signing secrets are configured, so macOS asks to confirm the first launch (right-click the app, then Open).
+- The desktop app checks GitHub for a newer release at launch and every six hours. When one exists, a notice offers "Update now and restart": it downloads the release asset for your platform, verifies it against `desktop-checksums-<platform>.txt`, replaces the installed app (the whole `hrdx.app` bundle on macOS, the executable on Windows and Linux), and relaunches. Panes detach before the restart and reattach afterwards, so sessions keep running. The app must live in a folder you can write to, such as `/Applications`. Dev builds (version `0.0.0`) never offer updates.
+
 ## Development
 
 ```sh
@@ -519,6 +550,8 @@ make check
 ```
 
 Windows without `make` on `PATH`: `go vet ./... && gofmt -l . && go test ./...`.
+
+The desktop app is a nested module: `go vet ./...` and `go test ./...` at the repository root skip it. Run `make check` in `desktop/` when changing it or any shared `internal/` package it uses.
 
 ## License
 

@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/patriceckhart/hrdx/internal/api"
@@ -200,34 +199,11 @@ func (m *Model) publish(event api.Event) {
 // registerMenu validates and stores one process-local context-menu entry.
 // Re-registering an action id replaces its entry without changing menu order.
 func (m *Model) registerMenu(registration api.MenuRegister) error {
-	registration.Target = strings.TrimSpace(registration.Target)
-	registration.Label = strings.TrimSpace(registration.Label)
-	registration.ActionID = strings.TrimSpace(registration.ActionID)
-	if registration.Target != "pane" && registration.Target != "tab" && registration.Target != "sidebar" {
-		return fmt.Errorf("target must be pane, tab, or sidebar")
+	menus, err := api.RegisterMenu(m.customMenus, registration)
+	if err != nil {
+		return err
 	}
-	if registration.Label == "" {
-		return fmt.Errorf("label is required")
-	}
-	if len([]rune(registration.Label)) > 80 || strings.IndexFunc(registration.Label, unicode.IsControl) >= 0 {
-		return fmt.Errorf("label must be at most 80 characters and contain no control characters")
-	}
-	if registration.ActionID == "" {
-		return fmt.Errorf("action_id is required")
-	}
-	if len([]rune(registration.ActionID)) > 128 || strings.IndexFunc(registration.ActionID, unicode.IsControl) >= 0 {
-		return fmt.Errorf("action_id must be at most 128 characters and contain no control characters")
-	}
-	for index, current := range m.customMenus {
-		if current.ActionID == registration.ActionID {
-			m.customMenus[index] = registration
-			return nil
-		}
-	}
-	if len(m.customMenus) >= 64 {
-		return fmt.Errorf("at most 64 menu entries may be registered")
-	}
-	m.customMenus = append(m.customMenus, registration)
+	m.customMenus = menus
 	return nil
 }
 

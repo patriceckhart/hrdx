@@ -223,7 +223,7 @@ func (m *Model) insertPane(target *space, newPane *pane, vertical, before bool) 
 	} else {
 		focused := currentTab.panes[currentTab.selected]
 		if focused.floating != nil {
-			currentTab.layout.walk(func(candidate *pane) { focused = candidate })
+			currentTab.layout.Walk(func(candidate *pane) { focused = candidate })
 		}
 		insertAtSide(currentTab.layout, focused, newPane, vertical, before)
 	}

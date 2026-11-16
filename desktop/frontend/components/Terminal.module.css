@@ -1,0 +1,13 @@
+.terminal {
+  position: absolute;
+  inset: 8px 6px 6px 12px;
+  overflow: hidden;
+}
+
+.terminal :global(.xterm) {
+  height: 100%;
+}
+
+.terminal :global(.xterm-viewport) {
+  background-color: transparent !important;
+}

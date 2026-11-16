@@ -121,7 +121,7 @@ func TestAPIPaneCreate(t *testing.T) {
 		floating.floating.widthPct != 40 || floating.floating.heightPct != 30 {
 		t.Fatalf("floating pane = %+v", floating.floating)
 	}
-	if web.tab().layout.contains(floating) {
+	if web.tab().layout.Contains(floating) {
 		t.Fatal("floating pane must not join the split tree")
 	}
 	status := model.apiStatus()

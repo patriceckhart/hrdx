@@ -1,0 +1,65 @@
+:root {
+  color-scheme: dark;
+  /* Theme roles, overwritten from the active hrdx theme. */
+  --hrdx-accent: #5fd7ff;
+  --hrdx-alt: #ff87d7;
+  --hrdx-muted: #767676;
+  --hrdx-faint: #444444;
+  --hrdx-good: #5fd787;
+  --hrdx-busy: #ffaf00;
+  --hrdx-bad: #ff5f5f;
+  --hrdx-bar-bg: #1c1c1c;
+  --hrdx-bar-fg: #bcbcbc;
+  --hrdx-ink: #080808;
+
+  /* Neutral surfaces. Themes tint them through --hrdx-accent only. */
+  --bg: #111113;
+  --surface: #18181b;
+  --surface-2: #1f1f23;
+  --surface-3: #27272c;
+  --border: #2a2a30;
+  --border-strong: #3a3a42;
+  --text: #ececf0;
+  --text-2: #a1a1aa;
+  --text-3: #6b6b74;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --titlebar: 44px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

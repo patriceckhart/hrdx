@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/patriceckhart/hrdx/internal/agent"
 )
 
 // The settings window is a centered modal with tabbed sections. It reuses
@@ -117,19 +118,19 @@ func (m Model) settingsRows() []settingsRow {
 			installed[kind] = true
 		}
 		var rows []settingsRow
-		for _, spec := range agentSpecs {
+		for _, spec := range agent.Specs {
 			box := "[x] "
-			if m.disabled[spec.kind] {
+			if m.disabled[spec.Kind] {
 				box = "[ ] "
 			}
-			label := box + spec.kind
-			if spec.custom {
+			label := box + spec.Kind
+			if spec.Custom {
 				label += " (custom)"
 			}
-			if !installed[spec.kind] {
+			if !installed[spec.Kind] {
 				label += " (not installed)"
 			}
-			rows = append(rows, settingsRow{label, "toggle:" + spec.kind})
+			rows = append(rows, settingsRow{label, "toggle:" + spec.Kind})
 		}
 		return rows
 	}

@@ -35,7 +35,8 @@ jobs:
       - name: gofmt check
         shell: bash
         run: |
-          diff=$(gofmt -l .)
+          # Covers the desktop module too; node_modules never holds our Go.
+          diff=$(find . -name '*.go' -not -path './desktop/frontend/node_modules/*' -print0 | xargs -0 gofmt -l)
           if [ -n "$diff" ]; then
             echo "gofmt issues:"
             echo "$diff"
@@ -44,3 +45,85 @@ jobs:
 
       - name: go test
         run: go test -race ./...
+
+  changes:
+    name: detect desktop changes
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$base" HEAD | grep -qE '^(desktop/|internal/|go\.mod$|go\.sum$)'; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  desktop:
+    name: desktop (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up go
+        uses: actions/setup-go@v5
+        with:
+          # Wails v2.15 dependencies require Go 1.26; the root module stays on 1.25.
+          go-version-file: desktop/go.mod
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: set up bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: webview packages (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: frontend
+        working-directory: desktop/frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run lint
+          bun test
+          bun run build
+
+      - name: go vet
+        shell: bash
+        run: |
+          tags=""
+          if [ "$RUNNER_OS" = "Linux" ]; then tags="-tags webkit2_41"; fi
+          go vet $tags ./...
+
+      - name: go test
+        shell: bash
+        run: |
+          tags=""
+          if [ "$RUNNER_OS" = "Linux" ]; then tags="-tags webkit2_41"; fi
+          go test -race $tags ./...

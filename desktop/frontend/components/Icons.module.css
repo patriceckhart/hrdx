@@ -1,0 +1,34 @@
+.shell,
+.workspace {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.logoBox {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.logo {
+  flex: none;
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}
+
+.shell {
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: -0.06em;
+}
+
+.workspace {
+  border-radius: 6px;
+  color: #fff;
+}

@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/patriceckhart/hrdx/internal/theme"
 )
 
 // resetThemes restores the default palette and clears loaded themes.
 func resetThemes() {
-	themeRegistry.Lock()
-	themeRegistry.themes = map[string]themeFile{}
-	themeRegistry.Unlock()
+	theme.Reset()
 	applyTheme(defaultThemeName)
 }
 

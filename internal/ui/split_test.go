@@ -65,7 +65,7 @@ func TestDividerDragChangesRatio(t *testing.T) {
 	model.drag = divs[0].node
 	model.dragFull = divs[0].full
 	model.applyDrag(divs[0].full.x+divs[0].full.w/4, 0)
-	if ratio := divs[0].node.ratio; ratio > 0.3 {
+	if ratio := divs[0].node.Ratio; ratio > 0.3 {
 		t.Fatalf("ratio = %f, want roughly 0.25", ratio)
 	}
 }
@@ -128,10 +128,10 @@ func TestInsertAtSideBefore(t *testing.T) {
 	if !insertAtSide(root, first, second, true, true) {
 		t.Fatal("insertAtSide failed")
 	}
-	if root.a.pane != second || root.b.pane != first {
-		t.Fatalf("order = %v/%v, want new pane first", root.a.pane.name, root.b.pane.name)
+	if root.A.Pane != second || root.B.Pane != first {
+		t.Fatalf("order = %v/%v, want new pane first", root.A.Pane.name, root.B.Pane.name)
 	}
-	if !root.vertical {
+	if !root.Vertical {
 		t.Fatal("split should be vertical")
 	}
 }

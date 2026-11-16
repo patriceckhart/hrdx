@@ -5,25 +5,26 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/patriceckhart/hrdx/internal/agent"
 	"github.com/patriceckhart/hrdx/internal/state"
 	"github.com/patriceckhart/hrdx/internal/term"
 )
 
 // resetHarnesses removes all custom entries registered by a test.
 func resetHarnesses() {
-	kept := agentSpecs[:0]
-	for _, spec := range agentSpecs {
-		if !spec.custom {
+	kept := agent.Specs[:0]
+	for _, spec := range agent.Specs {
+		if !spec.Custom {
 			kept = append(kept, spec)
 		}
 	}
-	agentSpecs = kept
+	agent.Specs = kept
 }
 
 func writeHarnessFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, harnessFile), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, agent.HarnessFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -38,30 +39,30 @@ func TestLoadHarnessesRegistersCustomKinds(t *testing.T) {
 		{"kind": "goose"}
 	]`)
 
-	if problem := loadHarnesses(dir); problem != "" {
+	if problem := agent.LoadHarnesses(dir); problem != "" {
 		t.Fatalf("loadHarnesses = %q, want no problem", problem)
 	}
 	if !isAgentKind("aider") || !isAgentKind("goose") {
 		t.Fatal("custom kinds should register as agents")
 	}
 	spec := agentByKind("aider")
-	if spec.binary != "aider" || len(spec.args) != 1 || spec.busyMatch != "Waiting for the model" ||
-		spec.idleTitle != "aider idle" || spec.attentionTitle != "aider waiting" {
+	if spec.Binary != "aider" || len(spec.Args) != 1 || spec.BusyMatch != "Waiting for the model" ||
+		spec.IdleTitle != "aider idle" || spec.AttentionTitle != "aider waiting" {
 		t.Fatalf("aider spec = %+v", spec)
 	}
-	if !spec.custom {
+	if !spec.Custom {
 		t.Fatal("registered harness must be marked custom")
 	}
-	if agentByKind("goose").binary != "goose" {
+	if agentByKind("goose").Binary != "goose" {
 		t.Fatal("binary should default to kind")
 	}
 }
 
 // titledPane registers a custom harness and returns a model whose first
 // pane in the second space runs it, ready to be fed terminal output.
-func titledPane(t *testing.T, spec harnessSpec) (Model, *pane) {
+func titledPane(t *testing.T, spec agent.HarnessSpec) (Model, *pane) {
 	t.Helper()
-	if err := registerHarness(spec); err != nil {
+	if err := agent.RegisterHarness(spec); err != nil {
 		t.Fatal(err)
 	}
 	model := New(Config{DefaultAgent: spec.Kind, Shell: "/bin/sh"}, []string{"/tmp/api", "/tmp/web"}, "", state.State{})
@@ -77,10 +78,10 @@ func titledPane(t *testing.T, spec harnessSpec) (Model, *pane) {
 // title and pin the pane to a permanent idle state.
 func TestHarnessWithoutTitleStatesFallsBackToScreen(t *testing.T) {
 	defer resetHarnesses()
-	model, target := titledPane(t, harnessSpec{Kind: "plain"})
+	model, target := titledPane(t, agent.HarnessSpec{Kind: "plain"})
 
-	if spec := agentByKind("plain"); spec.idleTitle != "" || spec.attentionTitle != "" {
-		t.Fatalf("unset title states = %q/%q, want both empty", spec.idleTitle, spec.attentionTitle)
+	if spec := agentByKind("plain"); spec.IdleTitle != "" || spec.AttentionTitle != "" {
+		t.Fatalf("unset title states = %q/%q, want both empty", spec.IdleTitle, spec.AttentionTitle)
 	}
 	target.term.Feed([]byte("\x1b]2;plain — some arbitrary title\x07⠋ Working"))
 	if state := model.paneAgentTitleState(target); state != "" {
@@ -96,7 +97,7 @@ func TestHarnessWithoutTitleStatesFallsBackToScreen(t *testing.T) {
 
 func TestHarnessAttentionTitleOverridesVisibleSpinner(t *testing.T) {
 	defer resetHarnesses()
-	model, target := titledPane(t, harnessSpec{
+	model, target := titledPane(t, agent.HarnessSpec{
 		Kind: "titled", IdleTitle: "[ready]", AttentionTitle: "[ask]",
 	})
 	target.term.Feed([]byte("\x1b]2;[ask] waiting for input\x07⠋ Working"))
@@ -135,11 +136,11 @@ func TestLoadHarnessesRejectsInvalidEntries(t *testing.T) {
 		{"kind": "ok"}
 	]`)
 
-	problem := loadHarnesses(dir)
+	problem := agent.LoadHarnesses(dir)
 	if problem == "" {
 		t.Fatal("expected a problem report for invalid entries")
 	}
-	if agentByKind("zot").binary != "zot" {
+	if agentByKind("zot").Binary != "zot" {
 		t.Fatal("built-in zot must not be overridden")
 	}
 	if !isAgentKind("ok") {
@@ -148,21 +149,21 @@ func TestLoadHarnessesRejectsInvalidEntries(t *testing.T) {
 }
 
 func TestLoadHarnessesMissingFileIsFine(t *testing.T) {
-	if problem := loadHarnesses(t.TempDir()); problem != "" {
+	if problem := agent.LoadHarnesses(t.TempDir()); problem != "" {
 		t.Fatalf("missing file reported %q", problem)
 	}
 }
 
 func TestLoadHarnessesBadJSON(t *testing.T) {
 	dir := writeHarnessFile(t, "{not json")
-	if problem := loadHarnesses(dir); problem == "" {
+	if problem := agent.LoadHarnesses(dir); problem == "" {
 		t.Fatal("bad json should be reported")
 	}
 }
 
 func TestCustomHarnessInSettingsAndToggle(t *testing.T) {
 	defer resetHarnesses()
-	if err := registerHarness(harnessSpec{Kind: "aider"}); err != nil {
+	if err := agent.RegisterHarness(agent.HarnessSpec{Kind: "aider"}); err != nil {
 		t.Fatal(err)
 	}
 	model := New(Config{Shell: "/bin/sh"}, []string{"/tmp/api"}, "", state.State{})
@@ -193,7 +194,7 @@ func TestCustomHarnessInSettingsAndToggle(t *testing.T) {
 
 func TestCustomHarnessRestoresPanes(t *testing.T) {
 	defer resetHarnesses()
-	if err := registerHarness(harnessSpec{Kind: "aider", Resume: []string{"--restore"}}); err != nil {
+	if err := agent.RegisterHarness(agent.HarnessSpec{Kind: "aider", Resume: []string{"--restore"}}); err != nil {
 		t.Fatal(err)
 	}
 	saved := state.State{Workspaces: []state.Workspace{{
@@ -209,22 +210,22 @@ func TestCustomHarnessRestoresPanes(t *testing.T) {
 
 func TestReRegisterReplacesCustomHarness(t *testing.T) {
 	defer resetHarnesses()
-	if err := registerHarness(harnessSpec{Kind: "aider", Busy: "old"}); err != nil {
+	if err := agent.RegisterHarness(agent.HarnessSpec{Kind: "aider", Busy: "old"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registerHarness(harnessSpec{Kind: "aider", Busy: "new"}); err != nil {
+	if err := agent.RegisterHarness(agent.HarnessSpec{Kind: "aider", Busy: "new"}); err != nil {
 		t.Fatal(err)
 	}
 	count := 0
-	for _, spec := range agentSpecs {
-		if spec.kind == "aider" {
+	for _, spec := range agent.Specs {
+		if spec.Kind == "aider" {
 			count++
 		}
 	}
 	if count != 1 {
 		t.Fatalf("aider registered %d times, want 1", count)
 	}
-	if agentByKind("aider").busyMatch != "new" {
+	if agentByKind("aider").BusyMatch != "new" {
 		t.Fatal("re-registration should replace the entry")
 	}
 }

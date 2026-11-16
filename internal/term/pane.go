@@ -45,6 +45,7 @@ type Pane struct {
 	modifyOtherKeys     bool // active xterm fallback setting
 	modifyOtherKeysMain bool // main-screen setting saved while alt screen is active
 	scanTail            []byte
+	tee                 func([]byte) // optional copy of local PTY output
 
 	// Foreground process caches. Mouse capture uses its own short-lived
 	// cache so an exited TUI cannot leave mouse reporting active in a shell.
@@ -68,6 +69,12 @@ type Pane struct {
 
 // Start launches command in cwd on a fresh PTY sized cols x rows.
 func Start(command string, args []string, cwd string, cols, rows int) (*Pane, error) {
+	return StartTee(command, args, cwd, cols, rows, nil)
+}
+
+// StartTee is Start with an output tee installed before the first read, so
+// no output escapes it. tee may be nil.
+func StartTee(command string, args []string, cwd string, cols, rows int, tee func([]byte)) (*Pane, error) {
 	if cols < 2 {
 		cols = 80
 	}
@@ -97,6 +104,7 @@ func Start(command string, args []string, cwd string, cols, rows int) (*Pane, er
 		pty:     ptmx,
 		cmd:     cmd,
 		updates: make(chan struct{}, 1),
+		tee:     tee,
 	}
 	pane.vt = vt.New(vt.WithSize(cols, rows), vt.WithWriter(lockedWriter{&pane.writeMu, ptmx}))
 	pane.input.init()
@@ -158,8 +166,8 @@ func (p *Pane) MarkExited() {
 		return
 	}
 	p.exited = true
-	p.mu.Unlock()
 	close(p.updates)
+	p.mu.Unlock()
 	p.input.close()
 }
 
@@ -253,7 +261,11 @@ func (p *Pane) reader() {
 			p.mu.Lock()
 			p.scanKeyboardProtocol(buffer[:n])
 			p.writeOutput(buffer[:n])
+			tee := p.tee
 			p.mu.Unlock()
+			if tee != nil {
+				tee(append([]byte(nil), buffer[:n]...))
+			}
 			p.notify()
 		}
 		if err != nil {
@@ -639,7 +651,14 @@ func (p *Pane) PlainScreen() string {
 	return out.String()
 }
 
+// notify signals a screen change. It holds p.mu so it can never race
+// MarkExited closing the channel: a send on a closed channel panics.
 func (p *Pane) notify() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.exited {
+		return
+	}
 	select {
 	case p.updates <- struct{}{}:
 	default:

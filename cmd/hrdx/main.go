@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -14,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/patriceckhart/hrdx/internal/api"
 	"github.com/patriceckhart/hrdx/internal/holder"
+	"github.com/patriceckhart/hrdx/internal/paths"
 	"github.com/patriceckhart/hrdx/internal/plugin"
 	"github.com/patriceckhart/hrdx/internal/state"
 	"github.com/patriceckhart/hrdx/internal/ui"
@@ -43,36 +43,6 @@ func resolvedVersion() string {
 	return strings.TrimPrefix(info.Main.Version, "v")
 }
 
-// defaultShell picks the shell for shell panes when --shell is unset.
-func defaultShell() string {
-	return defaultShellFor(runtime.GOOS, os.Getenv, exec.LookPath)
-}
-
-// defaultShellFor takes its platform dependencies as arguments so the Windows
-// selection rules can be tested on every host.
-func defaultShellFor(goos string, getenv func(string) string, lookPath func(string) (string, error)) string {
-	shell := getenv("SHELL")
-	if goos != "windows" {
-		if shell != "" {
-			return shell
-		}
-		return "/bin/sh"
-	}
-
-	// Git Bash exports SHELL=/usr/bin/bash, but that MSYS path cannot be
-	// launched by a native Windows hrdx process. Keep SHELL when Windows can
-	// actually resolve it (including an absolute Git for Windows path).
-	if shell != "" {
-		if _, err := lookPath(shell); err == nil {
-			return shell
-		}
-	}
-	if comspec := getenv("COMSPEC"); comspec != "" {
-		return comspec
-	}
-	return "powershell.exe"
-}
-
 func fullVersion() string {
 	v := resolvedVersion()
 	if commit != "" {
@@ -89,10 +59,10 @@ func fullVersion() string {
 	return v
 }
 
-type paths []string
+type dirList []string
 
-func (p *paths) String() string { return fmt.Sprint([]string(*p)) }
-func (p *paths) Set(value string) error {
+func (p *dirList) String() string { return fmt.Sprint([]string(*p)) }
+func (p *dirList) Set(value string) error {
 	*p = append(*p, value)
 	return nil
 }
@@ -145,7 +115,7 @@ func main() {
 		}
 	}
 
-	var cwd paths
+	var cwd dirList
 	var agent, provider, model, reasoning, shell, statePath string
 	var zotBin, piBin, claudeBin, codexBin string
 	var resume, fresh, apiOn, persistOn, pluginsOn, pluginViews bool
@@ -158,7 +128,7 @@ func main() {
 	flag.StringVar(&piBin, "pi-bin", "", "path to the pi binary")
 	flag.StringVar(&claudeBin, "claude-bin", "", "path to the claude binary")
 	flag.StringVar(&codexBin, "codex-bin", "", "path to the codex binary")
-	flag.StringVar(&shell, "shell", defaultShell(), "shell for shell panes")
+	flag.StringVar(&shell, "shell", paths.DefaultShell(), "shell for shell panes")
 	flag.StringVar(&statePath, "state", state.DefaultPath(), "state file for workspace persistence (empty disables)")
 	flag.BoolVar(&resume, "continue", false, "resume each agent's latest session")
 	flag.BoolVar(&fresh, "fresh", false, "ignore saved workspaces and start clean")
@@ -241,16 +211,16 @@ func main() {
 
 	// Use the legacy socket directory when it supports Unix sockets so live
 	// holders and existing API clients keep working across upgrades.
-	sockets := legacySocketPaths(statePath)
+	sockets := paths.Legacy(statePath)
 	if statePath != "" && (persistOn || apiOn) {
-		sockets = selectSocketPaths(statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"), probeUnixSocket)
+		sockets = paths.Select(statePath, runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"), paths.ProbeUnixSocket)
 	}
 
 	// Session holder: pane processes live in a small background process
 	// and survive TUI restarts. Attach to a running holder or spawn one.
 	var holderClient *holder.Client
 	if persistOn && statePath != "" {
-		client, err := holder.ConnectOrSpawn(sockets.holder, resolvedVersion())
+		client, err := holder.ConnectOrSpawn(sockets.Holder, resolvedVersion())
 		if errors.Is(err, holder.ErrHolderBusy) {
 			// Another hrdx terminal owns the holder. Starting anyway would
 			// launch unpersisted panes and overwrite that instance's state.
@@ -281,7 +251,7 @@ func main() {
 	resizeStopped := watchPlatformResize(program, stopResize)
 
 	if apiOn && statePath != "" {
-		server, err := ui.StartAPIServer(sockets.api, func(request api.Request) {
+		server, err := ui.StartAPIServer(sockets.API, func(request api.Request) {
 			program.Send(request)
 		}, events)
 		if err != nil {

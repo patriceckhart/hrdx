@@ -41,7 +41,7 @@ func runPlugins(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	statePath := flags.String("state", state.DefaultPath(), "discover plugins next to this state file (empty disables the default root)")
 	asJSON := flags.Bool("json", false, "print the experimental inventory as JSON")
-	var directories paths
+	var directories dirList
 	flags.Var(&directories, "dir", "additional directory containing plugin packages (repeatable, no precedence)")
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

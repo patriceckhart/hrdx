@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/paths"
 )
 
 func TestPluginCLIRuntimeFallback(t *testing.T) {
@@ -21,11 +22,11 @@ func TestPluginCLIRuntimeFallback(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(runtimeDir) })
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	paths, err := runtimeSocketPaths(statePath, runtime.GOOS, runtimeDir)
+	sockets, err := paths.Runtime(statePath, runtime.GOOS, runtimeDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := api.NewServer(paths.api, func(request api.Request) {
+	server := api.NewServer(sockets.API, func(request api.Request) {
 		request.Reply <- api.Reply{Data: map[string]bool{"accepted": true}}
 	}, nil)
 	if err := server.Start(); err != nil {

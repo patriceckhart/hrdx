@@ -1,0 +1,7 @@
+node_modules/
+.next/
+out/*
+!out/.gitkeep
+next-env.d.ts
+*.tsbuildinfo
+package.json.md5

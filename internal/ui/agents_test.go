@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/patriceckhart/hrdx/internal/agent"
 	"github.com/patriceckhart/hrdx/internal/state"
 )
 
@@ -106,8 +107,8 @@ func TestSettingsRowsShowCheckboxes(t *testing.T) {
 	model := New(Config{Shell: "/bin/sh"}, []string{"/tmp/api"}, "", state.State{})
 	model.toggleAgent("codex")
 	rows := model.settingsRows()
-	if len(rows) != len(agentSpecs) {
-		t.Fatalf("rows = %d, want %d", len(rows), len(agentSpecs))
+	if len(rows) != len(agent.Specs) {
+		t.Fatalf("rows = %d, want %d", len(rows), len(agent.Specs))
 	}
 	for _, row := range rows {
 		switch row.action {

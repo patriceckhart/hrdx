@@ -1,0 +1,460 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: rgb(0 0 0 / 45%);
+  backdrop-filter: blur(2px);
+}
+
+.dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: 76vh;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
+  user-select: text;
+}
+
+.dialog[data-wide] {
+  width: min(620px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 20px;
+}
+
+.dialogTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  outline: none;
+}
+
+.listItem,
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listItem[data-active],
+.menuItem[data-active] {
+  background: var(--surface-3);
+}
+
+.menuItem[data-danger] {
+  color: var(--hrdx-bad);
+}
+
+.listItem .hint {
+  margin-left: auto;
+}
+
+.hint {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.empty {
+  padding: 8px 10px;
+  color: var(--text-3);
+}
+
+.menu {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 50%);
+  outline: none;
+  font-size: 13px;
+}
+
+/* shadcn-style input and select: 36 px, subtle border, ring on focus. */
+.input,
+.dialog select {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.dialog select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.dialog select:hover,
+.input:hover {
+  border-color: color-mix(in srgb, var(--text) 25%, var(--border-strong));
+}
+
+.input:focus,
+.dialog select:focus,
+.dialog select:focus-visible {
+  border-color: color-mix(in srgb, var(--text) 45%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+/* Native spinners look foreign next to the custom controls. */
+.input[type="number"]::-webkit-inner-spin-button,
+.input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.row > .input,
+.row > select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  flex: 1 1 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* shadcn-style checkbox: 16 px rounded box, filled with a check when on. */
+.check input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--text) 35%, var(--border-strong));
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.check input[type="checkbox"]::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 22%, 86% 8%, 38% 72%);
+  transform: scale(0);
+  transition: transform 100ms ease;
+}
+
+.check input[type="checkbox"]:checked {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.check input[type="checkbox"]:checked::after {
+  transform: scale(1);
+}
+
+.check input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.completions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.chip {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Buttons share the 36 px control height with inputs and selects. */
+.button,
+.primary,
+.danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.button:hover {
+  background: var(--surface-3);
+}
+
+.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.button:focus-visible,
+.primary:focus-visible,
+.danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.button.small {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.danger {
+  background: var(--hrdx-bad);
+  border-color: var(--hrdx-bad);
+  color: #0b0b0d;
+}
+
+.primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.error {
+  margin-top: 10px;
+  color: var(--hrdx-bad);
+  font-size: 12px;
+}
+
+.message {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.note {
+  margin: 0 0 4px 24px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+/* Settings: titled groups of rows, label on the left, control on the right. */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.group h3 {
+  margin: 0 0 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 45%, var(--surface));
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 14px;
+}
+
+.setting + .setting {
+  border-top: 1px solid var(--border);
+}
+
+.settingText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.settingText small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.settingControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.settingControl select,
+.settingControl .input {
+  width: 200px;
+}
+
+.settingControl .narrow {
+  width: 90px;
+}
+
+.agentName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* shadcn-style switch. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-3);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.switch:checked {
+  background: var(--text);
+}
+
+.switch:checked::after {
+  transform: translateX(16px);
+  background: var(--bg);
+}
+
+.switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

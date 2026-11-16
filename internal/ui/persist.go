@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/patriceckhart/hrdx/internal/agent"
+	"github.com/patriceckhart/hrdx/internal/layout"
 	"github.com/patriceckhart/hrdx/internal/state"
 )
 
@@ -21,9 +23,9 @@ func (m *Model) snapshot() state.State {
 			saved.DurableMuted = append(saved.DurableMuted, category)
 		}
 	}
-	for _, spec := range agentSpecs {
-		if m.disabled[spec.kind] {
-			saved.DisabledAgents = append(saved.DisabledAgents, spec.kind)
+	for _, spec := range agent.Specs {
+		if m.disabled[spec.Kind] {
+			saved.DisabledAgents = append(saved.DisabledAgents, spec.Kind)
 		}
 	}
 	for _, currentSpace := range m.spaces {
@@ -59,30 +61,12 @@ func (m *Model) snapshot() state.State {
 				}
 				savedTab.Panes = append(savedTab.Panes, saved)
 			}
-			savedTab.Layout = snapshotNode(currentTab.layout, index)
+			savedTab.Layout = layout.ToState(currentTab.layout, index)
 			ws.Tabs = append(ws.Tabs, savedTab)
 		}
 		saved.Workspaces = append(saved.Workspaces, ws)
 	}
 	return saved
-}
-
-func snapshotNode(n *splitNode, index map[*pane]int) *state.Node {
-	if n == nil {
-		return nil
-	}
-	if n.pane != nil {
-		if i, ok := index[n.pane]; ok {
-			return &state.Node{Pane: &i}
-		}
-		return nil
-	}
-	return &state.Node{
-		Vertical: n.vertical,
-		Ratio:    n.ratio,
-		A:        snapshotNode(n.a, index),
-		B:        snapshotNode(n.b, index),
-	}
 }
 
 // restore rebuilds workspaces from a saved state. Agent panes are marked to
@@ -150,10 +134,7 @@ func (m *Model) restore(saved state.State) {
 				restoredTab.panes = append(restoredTab.panes, restoredPane)
 				m.nextID++
 			}
-			restoredTab.layout = restoreNode(savedTab.Layout, restoredTab.panes)
-			if restoredTab.layout == nil || !layoutComplete(restoredTab.layout, restoredTab.panes) {
-				restoredTab.layout = fallbackLayout(restoredTab.panes)
-			}
+			restoredTab.layout = layout.Restore(savedTab.Layout, restoredTab.panes)
 			restoredTab.selected = clampInt(savedTab.Selected, 0, len(restoredTab.panes)-1)
 			restored.tabs = append(restored.tabs, restoredTab)
 		}
@@ -178,55 +159,11 @@ func restoredPaneDir(path string) string {
 	return path
 }
 
-func restoreNode(n *state.Node, panes []*pane) *splitNode {
-	if n == nil {
-		return nil
-	}
-	if n.Pane != nil {
-		if *n.Pane < 0 || *n.Pane >= len(panes) {
-			return nil
-		}
-		return leafNode(panes[*n.Pane])
-	}
-	a := restoreNode(n.A, panes)
-	b := restoreNode(n.B, panes)
-	if a == nil || b == nil {
-		return nil
-	}
-	ratio := n.Ratio
-	if ratio <= 0 || ratio >= 1 {
-		ratio = 0.5
-	}
-	return &splitNode{vertical: n.Vertical, ratio: ratio, a: a, b: b}
-}
-
 // layoutComplete verifies every pane appears exactly once in the tree.
-func layoutComplete(root *splitNode, panes []*pane) bool {
-	seen := make(map[*pane]int)
-	root.walk(func(current *pane) { seen[current]++ })
-	if len(seen) != len(panes) {
-		return false
-	}
-	for _, currentPane := range panes {
-		if seen[currentPane] != 1 {
-			return false
-		}
-	}
-	return true
-}
+func layoutComplete(root *splitNode, panes []*pane) bool { return layout.Complete(root, panes) }
 
-// fallbackLayout stacks all panes in vertical splits when the saved tree is
-// missing or inconsistent with the pane list.
-func fallbackLayout(panes []*pane) *splitNode {
-	if len(panes) == 0 {
-		return nil
-	}
-	root := leafNode(panes[0])
-	for _, currentPane := range panes[1:] {
-		insertAt(root, panes[0], currentPane, true)
-	}
-	return root
-}
+// fallbackLayout stacks all panes in side-by-side splits.
+func fallbackLayout(panes []*pane) *splitNode { return layout.Fallback(panes) }
 
 // persist writes the current state to disk, surfacing errors in the footer.
 func (m *Model) persist() {

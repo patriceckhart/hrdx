@@ -1,0 +1,390 @@
+[
+  {
+    "code": "",
+    "error": "",
+    "method": "status",
+    "result": {
+      "type": "status",
+      "version": "test",
+      "workspaces": [
+        {
+          "name": "dira",
+          "path": "$DIRA",
+          "selected": true,
+          "tabs": [
+            {
+              "active": true,
+              "panes": [
+                {
+                  "pane_id": 1,
+                  "name": "zot 1",
+                  "kind": "zot",
+                  "running": false,
+                  "busy": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "group.list",
+    "result": {
+      "type": "groups",
+      "groups": []
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "workspace.create",
+    "result": {
+      "pane_id": 2,
+      "type": "workspace_created",
+      "workspace": "dirb"
+    }
+  },
+  {
+    "code": "error",
+    "error": "$DIRB is already open",
+    "method": "workspace.create",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "unknown kind \"nope\"",
+    "method": "workspace.create",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "$DIRB/missing does not exist",
+    "method": "workspace.create",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "group.list",
+    "result": {
+      "type": "groups",
+      "groups": [
+        {
+          "group_path": [
+            "g1"
+          ]
+        },
+        {
+          "group_path": [
+            "g1",
+            "g2"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.create",
+    "result": {
+      "pane_id": 3,
+      "type": "pane_created",
+      "workspace": "dirb"
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.create",
+    "result": {
+      "pane_id": 4,
+      "type": "pane_created",
+      "workspace": "dirb"
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.create",
+    "result": {
+      "pane_id": 5,
+      "type": "pane_created",
+      "workspace": "dirb"
+    }
+  },
+  {
+    "code": "invalid_params",
+    "error": "width_pct and height_pct are required for float",
+    "method": "pane.create",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "anchor must be center, top, bottom, left, or right",
+    "method": "pane.create",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "unknown split \"sideways\" (right, down, tab, float)",
+    "method": "pane.create",
+    "result": null
+  },
+  {
+    "code": "not_found",
+    "error": "workspace \"missing\" not found",
+    "method": "pane.create",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "unknown kind \"nope\"",
+    "method": "pane.create",
+    "result": null
+  },
+  {
+    "code": "error",
+    "error": "pane 2 is not running",
+    "method": "pane.send_text",
+    "result": null
+  },
+  {
+    "code": "not_found",
+    "error": "pane 999 not found",
+    "method": "pane.send_text",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.read",
+    "result": {
+      "pane_id": 2,
+      "screen": "",
+      "type": "pane_read"
+    }
+  },
+  {
+    "code": "not_found",
+    "error": "pane 999 not found",
+    "method": "pane.read",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.busy",
+    "result": false
+  },
+  {
+    "code": "not_found",
+    "error": "pane 999 not found",
+    "method": "pane.busy",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "menu.register",
+    "result": {
+      "action_id": "open",
+      "type": "menu_registered"
+    }
+  },
+  {
+    "code": "invalid_params",
+    "error": "target must be pane, tab, or sidebar",
+    "method": "menu.register",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "workspace.move",
+    "result": {
+      "group_path": [
+        "moved"
+      ],
+      "workspace": "dira",
+      "path": "$DIRA"
+    }
+  },
+  {
+    "code": "invalid_params",
+    "error": "group_path is required; use [] for standalone",
+    "method": "workspace.move",
+    "result": null
+  },
+  {
+    "code": "not_found",
+    "error": "workspace not found",
+    "method": "workspace.move",
+    "result": null
+  },
+  {
+    "code": "invalid_params",
+    "error": "group names must contain 1 to 80 nonblank characters and no controls",
+    "method": "workspace.move",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "status",
+    "result": {
+      "type": "status",
+      "version": "test",
+      "workspaces": [
+        {
+          "group_path": [
+            "moved"
+          ],
+          "name": "dira",
+          "path": "$DIRA",
+          "selected": false,
+          "tabs": [
+            {
+              "active": true,
+              "panes": [
+                {
+                  "pane_id": 1,
+                  "name": "zot 1",
+                  "kind": "zot",
+                  "running": false,
+                  "busy": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "group_path": [
+            "g1",
+            "g2"
+          ],
+          "name": "dirb",
+          "path": "$DIRB",
+          "selected": true,
+          "tabs": [
+            {
+              "active": false,
+              "panes": [
+                {
+                  "pane_id": 2,
+                  "name": "shell 1",
+                  "kind": "shell",
+                  "running": false,
+                  "busy": false
+                },
+                {
+                  "pane_id": 3,
+                  "name": "shell 2",
+                  "kind": "shell",
+                  "running": false,
+                  "busy": false
+                }
+              ]
+            },
+            {
+              "active": true,
+              "panes": [
+                {
+                  "pane_id": 4,
+                  "name": "shell 3",
+                  "kind": "shell",
+                  "running": false,
+                  "busy": false
+                },
+                {
+                  "pane_id": 5,
+                  "name": "shell 4",
+                  "kind": "shell",
+                  "running": false,
+                  "busy": false,
+                  "floating": true,
+                  "anchor": "left",
+                  "width_pct": 40,
+                  "height_pct": 30
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "pane.close",
+    "result": {
+      "pane_id": 3,
+      "type": "pane_closed"
+    }
+  },
+  {
+    "code": "not_found",
+    "error": "pane 999 not found",
+    "method": "pane.close",
+    "result": null
+  },
+  {
+    "code": "not_found",
+    "error": "workspace \"missing\" not found",
+    "method": "workspace.close",
+    "result": null
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "workspace.close",
+    "result": {
+      "type": "workspace_closed",
+      "workspace": "dirb"
+    }
+  },
+  {
+    "code": "",
+    "error": "",
+    "method": "status",
+    "result": {
+      "type": "status",
+      "version": "test",
+      "workspaces": [
+        {
+          "group_path": [
+            "moved"
+          ],
+          "name": "dira",
+          "path": "$DIRA",
+          "selected": true,
+          "tabs": [
+            {
+              "active": true,
+              "panes": [
+                {
+                  "pane_id": 1,
+                  "name": "zot 1",
+                  "kind": "zot",
+                  "running": false,
+                  "busy": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "code": "unknown_method",
+    "error": "unknown method bogus.method",
+    "method": "bogus.method",
+    "result": null
+  }
+]

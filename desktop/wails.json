@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "hrdx",
+  "outputfilename": "hrdx-desktop",
+  "frontend:dir": "frontend",
+  "frontend:install": "bun install --frozen-lockfile",
+  "frontend:build": "bun run build",
+  "frontend:dev:watcher": "bun run dev",
+  "frontend:dev:serverUrl": "http://localhost:3000",
+  "wailsjsdir": "frontend",
+  "info": {
+    "companyName": "hrdx",
+    "productName": "hrdx",
+    "productVersion": "0.0.0",
+    "copyright": "hrdx contributors",
+    "comments": "Native window frontend for hrdx"
+  }
+}

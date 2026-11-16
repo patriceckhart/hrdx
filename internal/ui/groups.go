@@ -1,44 +1,19 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
+	"github.com/patriceckhart/hrdx/internal/state"
 )
 
-func validateGroupPath(path []string) error {
-	size := 0
-	for _, name := range path {
-		size += len(name) + 1
-		if !utf8.ValidString(name) || strings.TrimSpace(name) == "" || len([]rune(name)) > 80 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
-			return fmt.Errorf("group names must contain 1 to 80 nonblank characters and no controls")
-		}
-	}
-	if size > 4096 {
-		return fmt.Errorf("group_path must be at most 4096 bytes including separators")
-	}
-	return nil
-}
+func validateGroupPath(path []string) error { return state.ValidateGroupPath(path) }
 
-func groupsForStatus(status api.Status) api.Groups {
-	result := api.Groups{Type: "groups", Groups: []api.GroupStatus{}}
-	seen := map[string]bool{}
-	for _, ws := range status.Workspaces {
-		for depth := 1; depth <= len(ws.GroupPath); depth++ {
-			path := ws.GroupPath[:depth]
-			key := strings.Join(path, "\x00")
-			if !seen[key] {
-				seen[key] = true
-				result.Groups = append(result.Groups, api.GroupStatus{GroupPath: append([]string(nil), path...)})
-			}
-		}
-	}
-	return result
-}
+func groupsForStatus(status api.Status) api.Groups { return api.GroupsFor(status) }
+
+func gitGroupPath(cwd string) []string { return gitinfo.GroupPath(cwd) }
 
 // Groups only rearrange sidebar rows; row targets retain their model indexes.
 // The ordered tree keeps siblings in first-workspace order without moving PTYs.

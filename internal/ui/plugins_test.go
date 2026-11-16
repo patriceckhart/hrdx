@@ -437,10 +437,10 @@ func countLeaves(n *splitNode) int {
 	if n == nil {
 		return 0
 	}
-	if n.pane != nil {
+	if n.Pane != nil {
 		return 1
 	}
-	return countLeaves(n.a) + countLeaves(n.b)
+	return countLeaves(n.A) + countLeaves(n.B)
 }
 
 func TestPluginProvidersFeedTheFinder(t *testing.T) {

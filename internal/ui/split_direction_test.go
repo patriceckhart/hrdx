@@ -20,10 +20,10 @@ func splitWith(t *testing.T, direction, key string, width, height int) bool {
 	updated, _ := model.runPrefix(prefixKey(key))
 	model = updated.(Model)
 	root := model.currentSpace().tab().layout
-	if root == nil || root.pane != nil {
+	if root == nil || root.Pane != nil {
 		t.Fatalf("key %q with %q did not split", key, direction)
 	}
-	return root.vertical
+	return root.Vertical
 }
 
 func TestDefaultSplitDirectionDrivesPrimaryKeys(t *testing.T) {

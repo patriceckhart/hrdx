@@ -22,7 +22,7 @@ func runPluginManagement(args []string, stdout, stderr io.Writer) int {
 	id := flags.String("id", "", "plugin ID for inspect, enable, disable, or revoke")
 	trust := flags.Bool("trust", false, "approve executing trusted code with your OS permissions (not a sandbox)")
 	instance := flags.Bool("instance", false, "allow granted workspace operations across the entire instance")
-	var grants, workspaces, settings paths
+	var grants, workspaces, settings dirList
 	flags.Var(&grants, "grant", "explicit capability grant (repeatable)")
 	flags.Var(&workspaces, "workspace", "exact workspace directory scope (repeatable)")
 	flags.Var(&settings, "set", "manifest-declared configuration value as key=value (repeatable, JSON for bool and int)")
