@@ -53,6 +53,8 @@ export function suppressQueries(term: Pick<Terminal, "parser">): IDisposable {
 export interface KeyEventLike {
   type: string
   key: string
+  /** Physical key, e.g. "Digit1". Optional so tests can omit it. */
+  code?: string
   ctrlKey: boolean
   altKey: boolean
   shiftKey: boolean
@@ -66,7 +68,22 @@ export interface KeyEventLike {
  * leaves the key to xterm.js.
  */
 export function overrideKey(event: KeyEventLike, kitty: boolean, mac = false): string | undefined {
-  if (event.type !== "keydown" || event.metaKey) return undefined
+  if (event.type !== "keydown") return undefined
+  // macOS line editing, as Terminal.app and Ghostty send it: cmd+backspace
+  // deletes to line start, cmd+left and cmd+right jump to start and end,
+  // option+backspace deletes a word, option+left and option+right move by
+  // word. Other cmd chords stay native shortcuts.
+  if (mac) {
+    const plainCmd = event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+    const plainOpt = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
+    if (plainCmd && event.key === "Backspace") return "\x15"
+    if (plainCmd && event.key === "ArrowLeft") return "\x01"
+    if (plainCmd && event.key === "ArrowRight") return "\x05"
+    if (plainOpt && event.key === "Backspace") return "\x1b\x7f"
+    if (plainOpt && event.key === "ArrowLeft") return "\x1bb"
+    if (plainOpt && event.key === "ArrowRight") return "\x1bf"
+  }
+  if (event.metaKey) return undefined
   // macOS Option composes characters (Option+L is @ on German layouts).
   // xterm.js leaves these to the textarea input event, which WKWebView does
   // not deliver reliably, so send the composed character directly. Dead
@@ -82,12 +99,20 @@ export function overrideKey(event: KeyEventLike, kitty: boolean, mac = false): s
   if (event.key === "Tab" && kitty && (event.ctrlKey || event.altKey)) {
     return `\x1b[9;${mods + 1}u`
   }
-  if (kitty && event.ctrlKey && event.key.length === 1) {
+  // ctrl+digit by physical key: with shift or option held the layout
+  // reports a symbol ("!", "¡") instead of the digit.
+  const digit = /^Digit([0-9])$/.exec(event.code ?? "")?.[1]
+  if (event.ctrlKey && digit) return `\x1b[${digit.charCodeAt(0)};${mods + 1}u`
+  if (event.ctrlKey && event.key.length === 1) {
     const code = event.key.charCodeAt(0)
     const isLetter = /[a-zA-Z]/.test(event.key)
-    // ctrl+letter keeps its control byte; ctrl+punctuation and digits have
-    // no legacy encoding and need CSI u.
-    if (!isLetter && code >= 32 && code < 127) {
+    const isDigit = /[0-9]/.test(event.key)
+    // ctrl+letter keeps its control byte. ctrl+digits have no legacy
+    // encoding, so they always go out as CSI u, kitty or not, like the TUI:
+    // a reattached child may have announced kitty keys before this frontend
+    // listened. Agents such as zot bind ctrl+1..9. Punctuation needs kitty,
+    // because ctrl+[ and ctrl+\ are real control bytes for legacy programs.
+    if (!isLetter && code >= 32 && code < 127 && (kitty || isDigit)) {
       return `\x1b[${code};${mods + 1}u`
     }
   }

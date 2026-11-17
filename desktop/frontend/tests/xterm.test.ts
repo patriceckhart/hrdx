@@ -79,7 +79,32 @@ describe("key overrides", () => {
     expect(overrideKey(key("Enter", { shiftKey: true }), false)).toBe("\r")
     expect(overrideKey(key("Enter"), false)).toBeUndefined()
     expect(overrideKey(key("Tab", { ctrlKey: true }), false)).toBeUndefined()
-    expect(overrideKey(key("1", { ctrlKey: true }), false)).toBeUndefined()
+    // ctrl+punctuation keeps xterm's control bytes (ctrl+[ is ESC) without kitty.
+    expect(overrideKey(key("[", { ctrlKey: true }), false)).toBeUndefined()
+  })
+
+  test("ctrl+digits always reach the child as CSI u, like the TUI", () => {
+    // zot binds ctrl+1..9 to quick model slots. A reattached child may have
+    // enabled kitty keys before this frontend listened, so do not require it.
+    expect(overrideKey(key("1", { ctrlKey: true }), false)).toBe("\x1b[49;5u")
+    expect(overrideKey(key("9", { ctrlKey: true }), true)).toBe("\x1b[57;5u")
+    // The physical key wins when shift or option change the character.
+    expect(overrideKey({ ...key("!", { ctrlKey: true, shiftKey: true }), code: "Digit1" }, false)).toBe("\x1b[49;6u")
+    expect(overrideKey(key("a", { ctrlKey: true }), false)).toBeUndefined()
+  })
+
+  test("macOS cmd and option line editing", () => {
+    expect(overrideKey(key("Backspace", { metaKey: true }), false, true)).toBe("\x15")
+    expect(overrideKey(key("ArrowLeft", { metaKey: true }), true, true)).toBe("\x01")
+    expect(overrideKey(key("ArrowRight", { metaKey: true }), false, true)).toBe("\x05")
+    expect(overrideKey(key("Backspace", { altKey: true }), false, true)).toBe("\x1b\x7f")
+    expect(overrideKey(key("ArrowLeft", { altKey: true }), false, true)).toBe("\x1bb")
+    expect(overrideKey(key("ArrowRight", { altKey: true }), false, true)).toBe("\x1bf")
+    // Not on Linux and Windows, where cmd does not exist and alt is meta.
+    expect(overrideKey(key("Backspace", { metaKey: true }), false, false)).toBeUndefined()
+    // Extra modifiers and other cmd chords stay native shortcuts.
+    expect(overrideKey(key("Backspace", { metaKey: true, shiftKey: true }), false, true)).toBeUndefined()
+    expect(overrideKey(key("c", { metaKey: true }), false, true)).toBeUndefined()
   })
 
   test("macOS option composes characters", () => {
