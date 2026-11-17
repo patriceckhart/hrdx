@@ -180,6 +180,51 @@ func TestInputAndResizeReachTerminal(t *testing.T) {
 	}
 }
 
+// Pastes follow the TUI: agents always get bracketed paste, so a multi-line
+// paste is one input instead of one submit per line, even when the agent's
+// DECSET 2004 was missed on reattach. Other programs get markers only when
+// they enabled the mode.
+func TestPanePasteBracketsLikeTheTUI(t *testing.T) {
+	first, second := 0, 1
+	saved := state.State{Workspaces: []state.Workspace{{Name: "w", CWD: t.TempDir(), Tabs: []state.Tab{{
+		Panes:  []state.Pane{{Kind: "zot", Name: "agent"}, {Kind: "shell", Name: "sh"}},
+		Layout: &state.Node{Ratio: 0.5, A: &state.Node{Pane: &first}, B: &state.Node{Pane: &second}},
+	}}}}}
+	h := newHarness(t, saved)
+	h.waitFor("panes running", func(m *model) bool {
+		panes := m.spaces[0].tab().panes
+		return panes[0].running && panes[1].running
+	})
+	panes := h.snapshot().Workspaces[0].Tabs[0].Panes
+	// Launches run concurrently, so take each pane's own terminal.
+	var agentTerm, shellTerm *fakeTerm
+	h.waitFor("terminals", func(m *model) bool {
+		live := m.spaces[0].tab().panes
+		agentTerm, shellTerm = live[0].term.(*fakeTerm), live[1].term.(*fakeTerm)
+		return true
+	})
+
+	h.core.PanePaste(panes[0].ID, "one\rtwo")
+	h.core.PanePaste(panes[1].ID, "one\rtwo")
+	h.core.PanePaste(panes[1].ID, "")
+	h.sync()
+	if got := agentTerm.writes(); len(got) != 1 || got[0] != "\x1b[200~one\rtwo\x1b[201~" {
+		t.Fatalf("agent paste = %q", got)
+	}
+	if got := shellTerm.writes(); len(got) != 1 || got[0] != "one\rtwo" {
+		t.Fatalf("plain shell paste = %q", got)
+	}
+
+	shellTerm.mu.Lock()
+	shellTerm.paste = true
+	shellTerm.mu.Unlock()
+	h.core.PanePaste(panes[1].ID, "x")
+	h.sync()
+	if got := shellTerm.writes(); len(got) != 2 || got[1] != "\x1b[200~x\x1b[201~" {
+		t.Fatalf("bracketed shell paste = %q", got)
+	}
+}
+
 func TestLaunchFailureShowsOnPane(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	launcher := newFakeLauncher(false)

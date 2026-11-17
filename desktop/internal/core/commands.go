@@ -15,6 +15,7 @@ import (
 	"github.com/patriceckhart/hrdx/internal/layout"
 	"github.com/patriceckhart/hrdx/internal/sound"
 	"github.com/patriceckhart/hrdx/internal/state"
+	"github.com/patriceckhart/hrdx/internal/term"
 	"github.com/patriceckhart/hrdx/internal/theme"
 )
 
@@ -439,6 +440,21 @@ func (c *Core) PaneInput(id int, data []byte) {
 		if target != nil && target.term != nil && target.running {
 			target.term.Write(data)
 		}
+	})
+}
+
+// PanePaste writes pasted text the way the TUI does: wrapped in bracketed
+// paste markers when the program enabled them, and always for agents, whose
+// one-time DECSET 2004 may have been missed on reattach. Without the markers
+// an agent reads every newline as Enter and submits line by line.
+func (c *Core) PanePaste(id int, text string) {
+	c.post(func() {
+		target, _, _ := c.m.paneByID(id)
+		if target == nil || target.term == nil || !target.running || text == "" {
+			return
+		}
+		bracketed := target.term.BracketedPaste() || c.m.paneAgentKind(target) != ""
+		target.term.Write(term.EncodePaste(text, bracketed))
 	})
 }
 

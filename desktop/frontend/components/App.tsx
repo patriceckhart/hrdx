@@ -191,7 +191,7 @@ export default function App() {
       return () => document.removeEventListener("hrdx:pane-menu", handler)
     })()
     // Dropped files type their quoted paths into the pane under the cursor,
-    // like a terminal. xterm's paste honors bracketed paste mode.
+    // like a terminal, bracketed for agents as in the TUI.
     const offDrop = onFileDrop((x, y, paths) => {
       if (paths.length === 0) return
       const frame = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-pane-id]")

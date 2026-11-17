@@ -90,6 +90,7 @@ export const bridge = {
   paneRestart: (id: number) => call<void>("PaneRestart", id),
   paneAttach: (id: number) => call<AttachResult>("PaneAttach", id),
   paneInput: (id: number, data: string) => send("PaneInput", id, data),
+  panePaste: (id: number, text: string) => send("PanePaste", id, text),
   paneInputBinary: (id: number, base64: string) => send("PaneInputBinary", id, base64),
   paneResize: (id: number, cols: number, rows: number) => send("PaneResize", id, cols, rows),
 

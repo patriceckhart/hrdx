@@ -23,6 +23,7 @@ type fakeTerm struct {
 	title    string
 	status   string
 	spinner  bool
+	paste    bool // bracketed paste mode enabled by the program
 	updates  chan struct{}
 	exitOnce sync.Once
 }
@@ -35,6 +36,11 @@ func (f *fakeTerm) Write(data []byte) {
 	f.mu.Lock()
 	f.written = append(f.written, string(data))
 	f.mu.Unlock()
+}
+func (f *fakeTerm) writes() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.written...)
 }
 func (f *fakeTerm) Resize(cols, rows int) {
 	f.mu.Lock()
@@ -85,9 +91,14 @@ func (f *fakeTerm) HasSpinner() bool {
 func (f *fakeTerm) ForegroundCommand() string { return "" }
 func (f *fakeTerm) PlainScreen() string       { return "screen text" }
 func (f *fakeTerm) KittyKeys() bool           { return false }
-func (f *fakeTerm) ModePreamble() string      { return "\x1b[?2004h" }
-func (f *fakeTerm) HolderSession() int64      { return f.session }
-func (f *fakeTerm) Updates() <-chan struct{}  { return f.updates }
+func (f *fakeTerm) BracketedPaste() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.paste
+}
+func (f *fakeTerm) ModePreamble() string     { return "\x1b[?2004h" }
+func (f *fakeTerm) HolderSession() int64     { return f.session }
+func (f *fakeTerm) Updates() <-chan struct{} { return f.updates }
 
 // fakeLauncher records launches and hands out fake terminals.
 type fakeLauncher struct {

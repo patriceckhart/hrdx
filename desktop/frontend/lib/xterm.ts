@@ -120,6 +120,14 @@ export function overrideKey(event: KeyEventLike, kitty: boolean, mac = false): s
 }
 
 /**
+ * Line endings for pasted text as terminals send them: CRLF and LF become
+ * CR, which is what Enter produces. The core adds bracketed paste markers.
+ */
+export function normalizePaste(text: string): string {
+  return text.replace(/\r?\n/g, "\r")
+}
+
+/**
  * Quotes dropped paths for a POSIX shell the way macOS Terminal does:
  * backslash-escape anything outside a safe set, join with spaces, add a
  * trailing space so the next argument can follow.

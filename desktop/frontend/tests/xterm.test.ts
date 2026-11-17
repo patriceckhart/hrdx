@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { Terminal } from "@xterm/headless"
-import { overrideKey, quotePaths, SeqGate, suppressQueries } from "../lib/xterm"
+import { normalizePaste, overrideKey, quotePaths, SeqGate, suppressQueries } from "../lib/xterm"
+
+describe("paste", () => {
+  test("line endings become CR like a terminal paste", () => {
+    expect(normalizePaste("a\nb\r\nc")).toBe("a\rb\rc")
+    expect(normalizePaste("single")).toBe("single")
+  })
+})
 
 function write(term: Terminal, data: string): Promise<void> {
   return new Promise((resolve) => term.write(data, resolve))

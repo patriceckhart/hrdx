@@ -12,7 +12,7 @@ import { xtermTheme } from "@/lib/theme"
 import type { OutputEvent } from "@/lib/types"
 import { keyName } from "@/lib/keys"
 import { copiedToast, registerTerminal } from "@/lib/ui"
-import { debounce, decodeBase64, encodeBinary, overrideKey, SeqGate, suppressQueries } from "@/lib/xterm"
+import { debounce, decodeBase64, encodeBinary, normalizePaste, overrideKey, SeqGate, suppressQueries } from "@/lib/xterm"
 import { handleTerminalKey } from "./KeyRouter"
 import styles from "./Terminal.module.css"
 
@@ -113,6 +113,22 @@ export default function Terminal({ paneID, focused, kittyKeys }: Props) {
       })
       .catch(() => gate.open(0))
 
+    // Pastes go to the core, which brackets them for agents and programs
+    // that enabled bracketed paste, exactly like the TUI. xterm.js only
+    // brackets when it saw DECSET 2004 itself, which a reattached agent sent
+    // long ago, so zot would read each pasted line as Enter.
+    const onPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? ""
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (text) pasteText(text)
+    }
+    const pasteText = (text: string) => {
+      xterm.scrollToBottom()
+      bridge.panePaste(paneID, normalizePaste(text))
+    }
+    element.addEventListener("paste", onPaste, true)
+
     const input = xterm.onData((data) => bridge.paneInput(paneID, data))
     const binary = xterm.onBinary((data) => bridge.paneInputBinary(paneID, encodeBinary(data)))
     xterm.attachCustomKeyEventHandler((event) => {
@@ -145,11 +161,12 @@ export default function Terminal({ paneID, focused, kittyKeys }: Props) {
         xterm.scrollToBottom()
       },
       copySelection: () => xterm.getSelection(),
-      paste: (text) => xterm.paste(text),
+      paste: (text) => pasteText(text),
     })
 
     return () => {
       disposed = true
+      element.removeEventListener("paste", onPaste, true)
       unregister()
       observer.disconnect()
       offOutput()

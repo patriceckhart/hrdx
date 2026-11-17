@@ -66,6 +66,10 @@ export function PaneMove(arg1, arg2, arg3) {
   return window['go']['bridge']['App']['PaneMove'](arg1, arg2, arg3);
 }
 
+export function PanePaste(arg1, arg2) {
+  return window['go']['bridge']['App']['PanePaste'](arg1, arg2);
+}
+
 export function PaneRename(arg1, arg2) {
   return window['go']['bridge']['App']['PaneRename'](arg1, arg2);
 }

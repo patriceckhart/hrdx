@@ -25,6 +25,7 @@ type Terminal interface {
 	ForegroundCommand() string
 	PlainScreen() string
 	KittyKeys() bool
+	BracketedPaste() bool
 	ModePreamble() string
 	HolderSession() int64
 	Updates() <-chan struct{}

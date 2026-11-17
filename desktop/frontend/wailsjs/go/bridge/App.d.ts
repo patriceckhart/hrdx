@@ -36,6 +36,8 @@ export function PaneInputBinary(arg1:number,arg2:string):Promise<void>;
 
 export function PaneMove(arg1:number,arg2:number,arg3:string):Promise<void>;
 
+export function PanePaste(arg1:number,arg2:string):Promise<void>;
+
 export function PaneRename(arg1:number,arg2:string):Promise<void>;
 
 export function PaneResize(arg1:number,arg2:number,arg3:number):Promise<void>;

@@ -193,6 +193,10 @@ func (a *App) PaneAttach(id int) (PaneAttachResult, error) {
 // PaneInput forwards UTF-8 input. Fire and forget.
 func (a *App) PaneInput(id int, data string) { a.core.PaneInput(id, []byte(data)) }
 
+// PanePaste writes pasted text, bracketed for agents and programs that ask
+// for it, as the TUI does. Fire and forget.
+func (a *App) PanePaste(id int, text string) { a.core.PanePaste(id, text) }
+
 // PaneInputBinary forwards base64 binary input. Fire and forget.
 func (a *App) PaneInputBinary(id int, encoded string) {
 	data, err := base64.StdEncoding.DecodeString(encoded)
