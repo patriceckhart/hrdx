@@ -168,6 +168,8 @@ export function runAction(action: string): boolean {
       return true
     case "tab-next":
     case "tab-prev":
+    case "tab-move-left":
+    case "tab-move-right":
     case "space-next":
     case "space-prev":
     case "pane-next":

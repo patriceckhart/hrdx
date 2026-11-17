@@ -73,6 +73,8 @@ var paneMenuItems = []menuItem{
 var tabMenuItems = []menuItem{
 	{"New tab", "tab-new"},
 	{"Rename tab", "tab-rename"},
+	{"Move left", "tab-move-left"},
+	{"Move right", "tab-move-right"},
 	{"Close tab", "tab-close"},
 }
 
@@ -203,6 +205,7 @@ type Model struct {
 	sideScroll    int
 	sideCollapsed bool
 	dragSpace     *space            // sidebar workspace being dragged for reordering
+	dragTab       *tab              // tab bar tab being dragged for reordering
 	dragMoved     bool              // the drag moved rows: suppress persist-less release
 	hintScroll    int               // first visible hint in the ctrl+b footer row
 	updateInfo    update.Info       // populated async; Available drives the notice
@@ -340,6 +343,7 @@ func (m Model) menuItems() []menuItem {
 		if owner := m.spaceByTab(m.menuTab); owner != nil && len(owner.tabs) == 1 {
 			builtins = tabMenuItems[:len(tabMenuItems)-1]
 		}
+		builtins = tabMoveItems(builtins, m.spaceByTab(m.menuTab), m.menuTab)
 	} else if m.menuPane != nil {
 		if owner := m.tabByPaneID(m.menuPane.id); owner != nil && len(owner.panes) == 1 {
 			builtins = paneMenuItems[:len(paneMenuItems)-1]
@@ -1404,6 +1408,10 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectTab(1)
 	case "tab-prev":
 		m.selectTab(-1)
+	case "tab-move-left":
+		m.moveActiveTab(-1)
+	case "tab-move-right":
+		m.moveActiveTab(1)
 	case "tab-1", "tab-2", "tab-3", "tab-4", "tab-5", "tab-6", "tab-7", "tab-8", "tab-9", "tab-0":
 		index := int(action[len("tab-")]) - int('1')
 		if index < 0 { // 0 selects the tenth tab, as in tmux.
@@ -1896,6 +1904,14 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.openKindPicker("tab", currentSpace, "", at)
 		case "tab-rename":
 			return m.openRenameTabInput(targetTab, tabIndex)
+		case "tab-move-left":
+			if moveTabTo(currentSpace, targetTab, tabIndex-1) {
+				m.persist()
+			}
+		case "tab-move-right":
+			if moveTabTo(currentSpace, targetTab, tabIndex+1) {
+				m.persist()
+			}
 		case "tab-close":
 			if len(currentSpace.tabs) > 1 {
 				m.closeTab(currentSpace, targetTab)
@@ -1979,8 +1995,33 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.resizePanes(currentSpace)
 			m.clearFocusedAttention()
 			m.persist()
+			// Arm a reorder drag, as for sidebar workspaces. A plain click
+			// releases without motion and leaves the order untouched.
+			m.dragTab = currentSpace.tabs[index]
+			m.dragMoved = false
 		}
 		return m, nil
+	}
+
+	// A tab drag along the tab bar reorders the tabs. Motion off the bar or
+	// past the last tab is ignored, so the drag is only cancelled by release.
+	if m.dragTab != nil {
+		switch msg.Action {
+		case tea.MouseActionMotion:
+			currentSpace := m.currentSpace()
+			if currentSpace == nil || msg.Y != 1 || localX < 0 {
+				return m, nil
+			}
+			m.dragTabTo(currentSpace, localX)
+			return m, nil
+		case tea.MouseActionRelease:
+			if m.dragMoved {
+				m.persist()
+			}
+			m.dragTab = nil
+			m.dragMoved = false
+			return m, nil
+		}
 	}
 
 	// Context menu handling has priority while it is open. The menu lives
@@ -3362,6 +3403,7 @@ func (m Model) prefixHintEntries() [][2]string {
 		{keys("workspace"), "workspace"},
 		{keys("tab-new"), "tab"},
 		{keys("tab-next", "tab-prev"), "tabs"},
+		{keys("tab-move-left", "tab-move-right"), "move tab"},
 		{keys("tab-1", "tab-2", "tab-3", "tab-4", "tab-5", "tab-6", "tab-7", "tab-8", "tab-9", "tab-0"), "jump tab"},
 		{keys("space-next", "space-prev"), "workspaces"},
 		{keys("pane-next"), "panes"},
@@ -3437,6 +3479,79 @@ func (m *Model) selectTab(delta int) {
 	}
 	count := len(currentSpace.tabs)
 	m.selectTabIndex((currentSpace.active + delta + count) % count)
+}
+
+// moveTabTo moves target to index in its workspace's tab list and keeps it
+// the active tab. Returns true when the order changed. Tabs carry their own
+// panes and layout, so only the slice order changes.
+func moveTabTo(owner *space, target *tab, index int) bool {
+	from := -1
+	for i, currentTab := range owner.tabs {
+		if currentTab == target {
+			from = i
+			break
+		}
+	}
+	if from < 0 || index < 0 || index >= len(owner.tabs) || index == from {
+		return false
+	}
+	owner.tabs = append(owner.tabs[:from], owner.tabs[from+1:]...)
+	owner.tabs = append(owner.tabs, nil)
+	copy(owner.tabs[index+1:], owner.tabs[index:])
+	owner.tabs[index] = target
+	owner.active = index
+	return true
+}
+
+// dragTabTo moves the dragged tab to the tab under x. Tab labels differ in
+// width, so a move is kept only when x lands inside the dragged tab's new
+// cell. Otherwise a narrow tab passing a wide one would swap back and forth
+// on every motion event.
+func (m *Model) dragTabTo(owner *space, x int) {
+	index, _ := m.tabHit(owner, x)
+	from := slices.Index(owner.tabs, m.dragTab)
+	if index < 0 || from < 0 || index == from {
+		return
+	}
+	if !moveTabTo(owner, m.dragTab, index) {
+		return
+	}
+	if landed, _ := m.tabHit(owner, x); landed != index {
+		moveTabTo(owner, m.dragTab, from)
+		return
+	}
+	m.dragMoved = true
+}
+
+// tabMoveItems drops "Move left" for the first tab and "Move right" for
+// the last, so the menu only offers moves that change something.
+func tabMoveItems(items []menuItem, owner *space, target *tab) []menuItem {
+	index := -1
+	if owner != nil {
+		index = slices.Index(owner.tabs, target)
+	}
+	out := make([]menuItem, 0, len(items))
+	for _, item := range items {
+		switch {
+		case item.action == "tab-move-left" && index <= 0:
+		case item.action == "tab-move-right" && (index < 0 || index >= len(owner.tabs)-1):
+		default:
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// moveActiveTab shifts the current tab one step left (-1) or right (+1).
+// It stops at the ends instead of wrapping, so repeated presses settle.
+func (m *Model) moveActiveTab(delta int) {
+	currentSpace := m.currentSpace()
+	if currentSpace == nil || currentSpace.active < 0 || currentSpace.active >= len(currentSpace.tabs) {
+		return
+	}
+	if moveTabTo(currentSpace, currentSpace.tabs[currentSpace.active], currentSpace.active+delta) {
+		m.persist()
+	}
 }
 
 func (m *Model) selectTabIndex(index int) {

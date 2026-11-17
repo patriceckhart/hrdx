@@ -530,6 +530,10 @@ func (c *Core) Navigate(action string) error {
 			m.selectTab(1)
 		case "tab-prev":
 			m.selectTab(-1)
+		case "tab-move-left":
+			m.moveActiveTab(-1)
+		case "tab-move-right":
+			m.moveActiveTab(1)
 		case "space-next":
 			m.selectSpace(1)
 		case "space-prev":

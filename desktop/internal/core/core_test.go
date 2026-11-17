@@ -385,3 +385,50 @@ func TestActivateAfterBlockedStart(t *testing.T) {
 		t.Fatal("second activation accepted")
 	}
 }
+
+// tab-move-left and tab-move-right come from the shared keymap and match
+// the TUI: the active tab moves one step and stays active, stopping at the
+// ends, and the new order is saved.
+func TestNavigateMovesActiveTab(t *testing.T) {
+	h := newHarness(t, state.State{}, t.TempDir())
+	for range 2 {
+		if err := h.core.TabCreate("shell"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index, name := range []string{"a", "b", "c"} {
+		if err := h.core.TabRename(0, index, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.core.TabSelect(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	order := func() (string, int) {
+		ws := h.snapshot().Workspaces[0]
+		out := ""
+		for _, current := range ws.Tabs {
+			out += current.Name
+		}
+		return out, ws.Active
+	}
+	steps := []struct {
+		action string
+		order  string
+		active int
+	}{
+		{"tab-move-left", "abc", 0}, // first tab: nothing to do
+		{"tab-move-right", "bac", 1},
+		{"tab-move-right", "bca", 2},
+		{"tab-move-right", "bca", 2}, // last tab: no wrap
+		{"tab-move-left", "bac", 1},
+	}
+	for _, step := range steps {
+		if err := h.core.Navigate(step.action); err != nil {
+			t.Fatal(err)
+		}
+		if got, active := order(); got != step.order || active != step.active {
+			t.Fatalf("%s: order %s active %d, want %s/%d", step.action, got, active, step.order, step.active)
+		}
+	}
+}

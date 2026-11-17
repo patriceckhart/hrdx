@@ -31,6 +31,8 @@ var Defaults = map[string][]string{
 	"tab-new":        {"t"},
 	"tab-next":       {"n"},
 	"tab-prev":       {"p"},
+	"tab-move-left":  {"<"},
+	"tab-move-right": {">"},
 	"tab-1":          {"1"},
 	"tab-2":          {"2"},
 	"tab-3":          {"3"},

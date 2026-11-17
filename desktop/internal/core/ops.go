@@ -312,6 +312,22 @@ func (m *model) selectTab(delta int) {
 	m.persist()
 }
 
+// moveActiveTab shifts the current tab one step left (-1) or right (+1),
+// stopping at the ends, like the TUI's tab-move-left and tab-move-right.
+func (m *model) moveActiveTab(delta int) {
+	current := m.currentSpace()
+	if current == nil || current.active < 0 || current.active >= len(current.tabs) {
+		return
+	}
+	from, to := current.active, current.active+delta
+	if to < 0 || to >= len(current.tabs) {
+		return
+	}
+	current.tabs[from], current.tabs[to] = current.tabs[to], current.tabs[from]
+	current.active = to
+	m.persist()
+}
+
 func (m *model) focusedID() int {
 	if focused := m.currentPane(); focused != nil {
 		return focused.id
