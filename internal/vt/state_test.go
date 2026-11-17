@@ -16,6 +16,69 @@ func TestPrimaryDeviceAttributesResponse(t *testing.T) {
 	}
 }
 
+// Issue #49: lazygit (tcell) sends CSI ? 4 m, an XTQMODKEYS query, at
+// startup. Read as SGR 4 it underlined every cell, so blank areas showed
+// as rows of lines and spaces as underscores. Prefixed sequences are
+// distinct commands and must not run their unprefixed namesakes.
+func TestPrivatePrefixedCSIIsNotItsNamesake(t *testing.T) {
+	cases := []struct {
+		name, seq string
+	}{
+		{"xterm modifyOtherKeys query", "\x1b[?4m"},
+		{"xterm modifyOtherKeys set", "\x1b[>4;2m"},
+		{"xterm modifyOtherKeys reset", "\x1b[>4;0m"},
+		{"kitty keyboard push", "\x1b[>1u"},
+		{"kitty keyboard pop", "\x1b[<u"},
+		{"kitty keyboard query", "\x1b[?u"},
+		{"kitty keyboard set", "\x1b[=1;1u"},
+		{"XTSAVE", "\x1b[?1049s"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			terminal := New(WithSize(8, 4))
+			// Bold and a cursor saved at the origin, then move to (2,1).
+			setup := "\x1b[1m\x1b[s\x1b[2;3H"
+			if _, err := terminal.Write([]byte(setup + tc.seq + "X")); err != nil {
+				t.Fatal(err)
+			}
+			terminal.Lock()
+			defer terminal.Unlock()
+			cell := terminal.Cell(2, 1)
+			if cell.Char != 'X' {
+				t.Fatalf("X landed elsewhere (cursor moved by %q)", tc.seq)
+			}
+			if cell.Mode&attrUnderline != 0 {
+				t.Fatalf("%q turned on underline", tc.seq)
+			}
+			if cell.Mode&attrBold == 0 {
+				t.Fatalf("%q reset attributes", tc.seq)
+			}
+		})
+	}
+}
+
+// The prefixed sequences hrdx implements keep working.
+func TestPrivatePrefixedCSIStillHandled(t *testing.T) {
+	var response bytes.Buffer
+	terminal := New(WithSize(8, 4), WithWriter(&response))
+	if _, err := terminal.Write([]byte("\x1b[?25l\x1b[3;2H\x1b[?6n")); err != nil {
+		t.Fatal(err)
+	}
+	if terminal.CursorVisible() {
+		t.Fatal("DECTCEM hide ignored")
+	}
+	if got := response.String(); got != "\x1b[3;2R" {
+		t.Fatalf("cursor report = %q", got)
+	}
+	response.Reset()
+	if _, err := terminal.Write([]byte("\x1b[>c")); err != nil {
+		t.Fatal(err)
+	}
+	if response.Len() == 0 {
+		t.Fatal("secondary device attributes got no reply")
+	}
+}
+
 func TestSGRWithOmittedLeadingParameter(t *testing.T) {
 	terminal := New(WithSize(8, 2))
 	// fzf prefixes its SGR parameter list with an omitted parameter.

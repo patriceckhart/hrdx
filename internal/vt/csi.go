@@ -9,10 +9,11 @@ import (
 // CSI (Control Sequence Introducer)
 // ESC+[
 type csiEscape struct {
-	buf  []byte
-	args []int
-	mode byte
-	priv bool
+	buf    []byte
+	args   []int
+	mode   byte
+	priv   bool // DEC private marker '?'
+	prefix byte // private parameter prefix: '?', '>', '=', '<', or 0
 }
 
 func (c *csiEscape) reset() {
@@ -20,6 +21,7 @@ func (c *csiEscape) reset() {
 	c.args = c.args[:0]
 	c.mode = 0
 	c.priv = false
+	c.prefix = 0
 }
 
 func (c *csiEscape) put(b byte) bool {
@@ -38,8 +40,10 @@ func (c *csiEscape) parse() {
 	}
 	s := string(c.buf)
 	c.args = c.args[:0]
-	if s[0] == '?' {
-		c.priv = true
+	switch s[0] {
+	case '?', '>', '=', '<':
+		c.prefix = s[0]
+		c.priv = s[0] == '?'
 		s = s[1:]
 	}
 	s = s[:len(s)-1]
@@ -78,8 +82,23 @@ func (c *csiEscape) defaultArg(i, def int) int {
 	return value
 }
 
+// prefixedCSI lists the private-prefixed sequences handleCSI implements.
+// Every other prefixed sequence is a different command from its unprefixed
+// namesake and must be ignored: CSI ? 4 m (an XTQMODKEYS query lazygit
+// sends) is not SGR underline, CSI > 4 ; 2 m (modifyOtherKeys) is not an
+// SGR reset, and the kitty keyboard CSI > 1 u, CSI < u, and CSI ? u are not
+// DECRC.
+var prefixedCSI = map[byte]string{
+	'?': "hlJKncr", // DEC modes, selective erase, DSR, DA, DECSTBM (rejected)
+	'>': "c",       // secondary device attributes
+	'=': "c",       // tertiary device attributes
+}
+
 func (t *State) handleCSI() {
 	c := &t.csi
+	if c.prefix != 0 && !strings.ContainsRune(prefixedCSI[c.prefix], rune(c.mode)) {
+		return
+	}
 	switch c.mode {
 	default:
 		goto unknown
