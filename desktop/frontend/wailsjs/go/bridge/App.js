@@ -122,6 +122,18 @@ export function SplitSetRatio(arg1, arg2) {
   return window['go']['bridge']['App']['SplitSetRatio'](arg1, arg2);
 }
 
+export function SubrepoHide(arg1, arg2) {
+  return window['go']['bridge']['App']['SubrepoHide'](arg1, arg2);
+}
+
+export function SubrepoOpen(arg1, arg2, arg3, arg4) {
+  return window['go']['bridge']['App']['SubrepoOpen'](arg1, arg2, arg3, arg4);
+}
+
+export function SubrepoUnhide(arg1) {
+  return window['go']['bridge']['App']['SubrepoUnhide'](arg1);
+}
+
 export function TabClose(arg1, arg2) {
   return window['go']['bridge']['App']['TabClose'](arg1, arg2);
 }

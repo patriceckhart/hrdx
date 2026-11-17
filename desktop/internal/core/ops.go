@@ -426,6 +426,8 @@ func (m *model) createWorkspace(path, kind string, groupPath []string, groupFrom
 	m.publish(api.Event{Event: api.EventPaneCreated,
 		Data: api.PaneEvent{Pane: first.id, Name: first.name, Kind: first.kind, Workspace: created.name}})
 	m.startPane(created, first)
+	// List the new workspace's repositories now, not on the next tick.
+	m.refreshSubrepos()
 	return created, nil
 }
 

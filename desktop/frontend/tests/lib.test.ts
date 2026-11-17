@@ -4,6 +4,22 @@ import { DIVIDER, dropZone, floatRect, layoutTree, ratioAt, withRatio, zoneRect 
 import { ansi256, cssColor, cssVariables, xtermTheme } from "../lib/theme"
 import type { NodeView } from "../lib/types"
 import { reorderTarget } from "../lib/reorder"
+import { subrepoTree } from "../lib/subrepos"
+
+describe("sub-repository tree", () => {
+  test("emits shared folders once and marks last siblings", () => {
+    const rows = subrepoTree([
+      { path: "/w/api", rel: "api" },
+      { path: "/w/packages/a", rel: "packages/a" },
+      { path: "/w/packages/b", rel: "packages/b" },
+      { path: "/w/web", rel: "web" },
+    ]).map((node) => `${node.level}:${node.name}:${node.repo}:${node.last ? "└" : "├"}`)
+    expect(rows).toEqual(["0:api:0:├", "0:packages:-1:├", "1:a:1:├", "1:b:2:└", "0:web:3:└"])
+  })
+  test("empty list has no rows", () => {
+    expect(subrepoTree([])).toEqual([])
+  })
+})
 
 // Mirrors core.WorkspaceReorder: remove `from`, then insert at `to`.
 const moved = (items: string[], from: number, to: number | null) => {

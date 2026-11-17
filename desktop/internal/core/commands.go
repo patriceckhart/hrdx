@@ -1,7 +1,9 @@
 package core
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -9,6 +11,7 @@ import (
 	"github.com/patriceckhart/hrdx/desktop/internal/prefs"
 	"github.com/patriceckhart/hrdx/internal/agent"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
 	"github.com/patriceckhart/hrdx/internal/layout"
 	"github.com/patriceckhart/hrdx/internal/sound"
 	"github.com/patriceckhart/hrdx/internal/state"
@@ -41,6 +44,8 @@ func (c *Core) Activate(statePath string, saved state.State, launcher Launcher, 
 		}
 		m.gcHolderSessions()
 		m.startAll()
+		// Scan now instead of waiting for the first ticker interval.
+		m.refreshSubrepos()
 		m.persist()
 		return nil
 	})
@@ -115,6 +120,71 @@ func (c *Core) WorkspaceMove(index int, groupPath []string) error {
 			return err
 		}
 		c.m.moveWorkspace(c.m.spaces[index], groupPath)
+		return nil
+	})
+}
+
+// SubrepoOpen starts a pane of kind in a nested repository of workspace.
+// where is tab, right, or down. The pane keeps the repository as its start
+// directory across restarts.
+func (c *Core) SubrepoOpen(workspace int, path, kind, where string) error {
+	return c.do(func() error {
+		m := c.m
+		owner, err := m.subrepoOwner(workspace, path)
+		if err != nil {
+			return err
+		}
+		if where != "tab" && where != "right" && where != "down" {
+			return fmt.Errorf("unknown placement %q (tab, right, down)", where)
+		}
+		if m.blocked != "" {
+			return errors.New(m.blocked)
+		}
+		kind, err = m.resolveKind(kind)
+		if err != nil {
+			return err
+		}
+		m.selected = m.spaceIndex(owner)
+		var created *pane
+		switch where {
+		case "tab":
+			created = m.addTab(owner, kind)
+		case "right":
+			created = m.addPane(owner, kind, true, false)
+		default:
+			created = m.addPane(owner, kind, false, false)
+		}
+		if filepath.Clean(path) != filepath.Clean(owner.cwd) {
+			created.cwd = filepath.Clean(path)
+		}
+		m.persist()
+		m.publish(api.Event{Event: api.EventPaneCreated,
+			Data: api.PaneEvent{Pane: created.id, Name: created.name, Kind: created.kind, Workspace: owner.name}})
+		m.startPane(owner, created)
+		return nil
+	})
+}
+
+// SubrepoHide removes a nested repository from a workspace's list and stops
+// scanning below it.
+func (c *Core) SubrepoHide(workspace int, path string) error {
+	return c.do(func() error {
+		owner, err := c.m.spaceAt(workspace)
+		if err != nil {
+			return err
+		}
+		return c.m.hideSubrepo(owner, path)
+	})
+}
+
+// SubrepoUnhide shows every hidden folder of a workspace again.
+func (c *Core) SubrepoUnhide(workspace int) error {
+	return c.do(func() error {
+		owner, err := c.m.spaceAt(workspace)
+		if err != nil {
+			return err
+		}
+		c.m.unhideSubrepos(owner)
 		return nil
 	})
 }
@@ -556,7 +626,10 @@ type SettingsPatch struct {
 	SplitDirection   *string         `json:"split_direction,omitempty"`
 	WorkspaceFolding *bool           `json:"workspace_folding,omitempty"`
 	SidebarCollapsed *bool           `json:"sidebar_collapsed,omitempty"`
-	Prefs            *prefs.Prefs    `json:"prefs,omitempty"`
+	// SubrepoDepth sets how many folder levels are searched for nested git
+	// repositories, 0 turns the sidebar list off.
+	SubrepoDepth *int         `json:"subrepo_depth,omitempty"`
+	Prefs        *prefs.Prefs `json:"prefs,omitempty"`
 }
 
 // SettingsSet applies a patch and persists it immediately.
@@ -620,6 +693,13 @@ func (c *Core) SettingsSet(patch SettingsPatch) error {
 		}
 		if patch.SidebarCollapsed != nil {
 			m.sidebarCollapsed = *patch.SidebarCollapsed
+		}
+		if patch.SubrepoDepth != nil {
+			depth := *patch.SubrepoDepth
+			if depth < 0 || depth > gitinfo.MaxSubrepoDepth {
+				return fmt.Errorf("subrepo depth must be between 0 and %d", gitinfo.MaxSubrepoDepth)
+			}
+			m.setSubrepoDepth(depth)
 		}
 		m.persist()
 		if patch.Prefs != nil {

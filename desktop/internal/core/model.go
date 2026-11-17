@@ -77,10 +77,12 @@ type space struct {
 	active    int
 	folded    bool
 
-	// Fields the desktop app does not implement in v1, preserved for the TUI.
-	host           string
-	continuous     []state.DurableRef
+	// Nested repositories hidden from the sidebar, as clean relative paths.
 	hiddenSubrepos []string
+
+	// Fields the desktop app does not implement in v1, preserved for the TUI.
+	host       string
+	continuous []state.DurableRef
 }
 
 func (s *space) tab() *tab {

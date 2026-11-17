@@ -94,6 +94,19 @@ func (a *App) WorkspaceMove(index int, groupPath []string) error {
 	return a.core.WorkspaceMove(index, groupPath)
 }
 
+// SubrepoOpen starts a pane in a nested repository: where is tab, right, or down.
+func (a *App) SubrepoOpen(workspace int, path, kind, where string) error {
+	return a.core.SubrepoOpen(workspace, path, kind, where)
+}
+
+// SubrepoHide hides a nested repository from a workspace's list.
+func (a *App) SubrepoHide(workspace int, path string) error {
+	return a.core.SubrepoHide(workspace, path)
+}
+
+// SubrepoUnhide shows a workspace's hidden folders again.
+func (a *App) SubrepoUnhide(workspace int) error { return a.core.SubrepoUnhide(workspace) }
+
 // WorkspaceSetFolded folds a workspace's sidebar rows.
 func (a *App) WorkspaceSetFolded(index int, folded bool) error {
 	return a.core.WorkspaceSetFolded(index, folded)

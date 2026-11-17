@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { bridge, errorMessage } from "@/lib/bridge"
 import type { Prefs, SettingsPatch, SettingsView } from "@/lib/types"
 import { closeModal } from "@/lib/ui"
@@ -43,11 +43,16 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (checked: b
 export default function SettingsDialog() {
   const [settings, setSettings] = useState<SettingsView | null>(null)
   const [error, setError] = useState("")
+  // Depth restored when the switch is turned back on, like the TUI.
+  const lastDepth = useRef(1)
 
   const load = useCallback(() => {
     void bridge
       .settingsGet()
-      .then(setSettings)
+      .then((next) => {
+        if (next.subrepo_depth > 0) lastDepth.current = next.subrepo_depth
+        setSettings(next)
+      })
       .catch((failure: unknown) => setError(errorMessage(failure)))
   }, [])
   useEffect(load, [load])
@@ -187,6 +192,29 @@ export default function SettingsDialog() {
           <Setting label="Workspace folding" description="Fold workspaces in the sidebar.">
             <Switch checked={settings.workspace_folding} onChange={(workspace_folding) => void apply({ workspace_folding })} />
           </Setting>
+          <Setting label="Nested repositories" description="List git repositories inside each workspace with branch and status.">
+            <Switch
+              checked={settings.subrepo_depth > 0}
+              onChange={(enabled) => void apply({ subrepo_depth: enabled ? Math.max(1, lastDepth.current) : 0 })}
+            />
+          </Setting>
+          {settings.subrepo_depth > 0 ? (
+            <Setting label="Search depth" description="Folder levels below the workspace to search.">
+              <select
+                value={settings.subrepo_depth}
+                onChange={(event) => {
+                  lastDepth.current = Number(event.target.value)
+                  void apply({ subrepo_depth: lastDepth.current })
+                }}
+              >
+                {[1, 2, 3].map((depth) => (
+                  <option key={depth} value={depth}>
+                    {depth === 1 ? "1 level" : `${depth} levels`}
+                  </option>
+                ))}
+              </select>
+            </Setting>
+          ) : null}
           <Setting label="Scrollback lines">
             <input
               type="number"

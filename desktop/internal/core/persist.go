@@ -9,6 +9,7 @@ import (
 	"github.com/patriceckhart/hrdx/desktop/internal/prefs"
 	"github.com/patriceckhart/hrdx/internal/agent"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
 	"github.com/patriceckhart/hrdx/internal/keymap"
 	"github.com/patriceckhart/hrdx/internal/layout"
 	"github.com/patriceckhart/hrdx/internal/sound"
@@ -22,6 +23,7 @@ func newModel(config Config, saved state.State, launcher Launcher, hooks Hooks, 
 		prefs: desktopPrefs.Normalized(), nextID: 1,
 		disabled: map[string]bool{}, wasBusy: map[int]bool{}, finishSeq: map[int]uint64{},
 		paneAttention: map[int]bool{}, windowFocused: true,
+		subrepos: map[string]subrepoCache{},
 	}
 	m.loadConfigFiles()
 	m.applySettings(saved)
@@ -70,7 +72,20 @@ func (m *model) applySettings(saved state.State) {
 	m.foldEnabled = saved.WorkspaceFolding
 	m.tuiSidebarWidth = saved.SidebarWidth
 	m.durableMuted = append([]string(nil), saved.DurableMuted...)
-	m.subrepoDepth = saved.SubrepoDepth
+	m.subrepoDepth = clamp(saved.SubrepoDepth, 0, gitinfo.MaxSubrepoDepth)
+}
+
+// cleanHidden keeps valid, distinct hidden sub-repository paths in sorted
+// order, like the TUI, dropping any that could point outside the workspace.
+func cleanHidden(saved []string) []string {
+	var out []string
+	for _, rel := range saved {
+		if rel = gitinfo.CleanSubrepoRel(rel); rel != "" && !slices.Contains(out, rel) {
+			out = append(out, rel)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // restore rebuilds workspaces from saved state. Agent panes resume their
@@ -88,7 +103,7 @@ func (m *model) restore(saved state.State) {
 		restored := &space{
 			name: ws.Name, cwd: ws.CWD, active: ws.Active, folded: ws.Folded,
 			host: ws.Host, continuous: append([]state.DurableRef(nil), ws.Continuous...),
-			hiddenSubrepos: append([]string(nil), ws.HiddenSubrepos...),
+			hiddenSubrepos: cleanHidden(ws.HiddenSubrepos),
 		}
 		if state.ValidateGroupPath(ws.GroupPath) == nil {
 			restored.groupPath = append([]string(nil), ws.GroupPath...)

@@ -43,6 +43,20 @@ export interface WorkspaceView {
   folded?: boolean
   active: number
   tabs: TabView[] | null
+  subrepos?: SubrepoView[]
+  hidden_subrepos?: number
+}
+
+/** A git repository nested below a workspace. */
+export interface SubrepoView {
+  path: string
+  /** Slash-separated path relative to the workspace. */
+  rel: string
+  branch?: string
+  ahead?: number
+  behind?: number
+  changed?: number
+  conflicts?: number
 }
 
 export interface AgentView {
@@ -103,6 +117,7 @@ export interface SettingsView {
   auto_copy: boolean
   split_direction: string
   workspace_folding: boolean
+  subrepo_depth: number
   prefs: Prefs
 }
 
@@ -117,6 +132,7 @@ export interface SettingsPatch {
   split_direction?: string
   workspace_folding?: boolean
   sidebar_collapsed?: boolean
+  subrepo_depth?: number
   prefs?: Prefs
 }
 

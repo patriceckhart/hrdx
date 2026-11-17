@@ -66,6 +66,10 @@ export const bridge = {
   workspaceClose: (index: number) => call<void>("WorkspaceClose", index),
   workspaceReorder: (from: number, to: number) => call<void>("WorkspaceReorder", from, to),
   workspaceMove: (index: number, groupPath: string[]) => call<void>("WorkspaceMove", index, groupPath),
+  subrepoOpen: (workspace: number, path: string, kind: string, where: "tab" | "right" | "down") =>
+    call<void>("SubrepoOpen", workspace, path, kind, where),
+  subrepoHide: (workspace: number, path: string) => call<void>("SubrepoHide", workspace, path),
+  subrepoUnhide: (workspace: number) => call<void>("SubrepoUnhide", workspace),
   workspaceSetFolded: (index: number, folded: boolean) => call<void>("WorkspaceSetFolded", index, folded),
   workspaceRename: (index: number, name: string) => call<void>("WorkspaceRename", index, name),
   completePath: (prefix: string) => call<string[]>("CompletePath", prefix),

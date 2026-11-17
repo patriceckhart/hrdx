@@ -181,6 +181,7 @@ export namespace core {
 	    split_direction?: string;
 	    workspace_folding?: boolean;
 	    sidebar_collapsed?: boolean;
+	    subrepo_depth?: number;
 	    prefs?: prefs.Prefs;
 	
 	    static createFrom(source: any = {}) {
@@ -199,6 +200,7 @@ export namespace core {
 	        this.split_direction = source["split_direction"];
 	        this.workspace_folding = source["workspace_folding"];
 	        this.sidebar_collapsed = source["sidebar_collapsed"];
+	        this.subrepo_depth = source["subrepo_depth"];
 	        this.prefs = this.convertValues(source["prefs"], prefs.Prefs);
 	    }
 	
@@ -233,6 +235,7 @@ export namespace core {
 	    auto_copy: boolean;
 	    split_direction: string;
 	    workspace_folding: boolean;
+	    subrepo_depth: number;
 	    prefs: prefs.Prefs;
 	
 	    static createFrom(source: any = {}) {
@@ -253,6 +256,7 @@ export namespace core {
 	        this.auto_copy = source["auto_copy"];
 	        this.split_direction = source["split_direction"];
 	        this.workspace_folding = source["workspace_folding"];
+	        this.subrepo_depth = source["subrepo_depth"];
 	        this.prefs = this.convertValues(source["prefs"], prefs.Prefs);
 	    }
 	
@@ -273,6 +277,30 @@ export namespace core {
 		    }
 		    return a;
 		}
+	}
+	export class SubrepoView {
+	    path: string;
+	    rel: string;
+	    branch?: string;
+	    ahead?: number;
+	    behind?: number;
+	    changed?: number;
+	    conflicts?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SubrepoView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.rel = source["rel"];
+	        this.branch = source["branch"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.changed = source["changed"];
+	        this.conflicts = source["conflicts"];
+	    }
 	}
 	export class TabView {
 	    name?: string;
@@ -334,6 +362,8 @@ export namespace core {
 	    folded?: boolean;
 	    active: number;
 	    tabs: TabView[];
+	    subrepos?: SubrepoView[];
+	    hidden_subrepos?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceView(source);
@@ -348,6 +378,8 @@ export namespace core {
 	        this.folded = source["folded"];
 	        this.active = source["active"];
 	        this.tabs = this.convertValues(source["tabs"], TabView);
+	        this.subrepos = this.convertValues(source["subrepos"], SubrepoView);
+	        this.hidden_subrepos = source["hidden_subrepos"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

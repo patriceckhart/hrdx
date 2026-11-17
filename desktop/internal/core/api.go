@@ -203,8 +203,8 @@ func (m *model) moveWorkspace(target *space, groupPath []string) api.WorkspaceEv
 	return data
 }
 
-// apiStatus builds the full status snapshot in the TUI's shape. Durable and
-// sub-repository fields stay empty: the desktop app does not implement them.
+// apiStatus builds the full status snapshot in the TUI's shape. Durable
+// fields stay empty: the desktop app does not implement them.
 func (m *model) apiStatus() api.Status {
 	status := api.Status{Type: "status", Version: m.config.Version}
 	for spaceIndex, current := range m.spaces {
@@ -213,6 +213,7 @@ func (m *model) apiStatus() api.Status {
 			Name:      current.name, Path: current.cwd,
 			Selected: spaceIndex == m.selected, Branch: branch(current.cwd),
 			ContinuousHost: current.host,
+			Subrepos:       m.apiSubrepos(current.cwd),
 		}
 		for tabIndex, currentTab := range current.tabs {
 			tabStatus := api.TabStatus{Name: currentTab.name, Active: tabIndex == current.active}

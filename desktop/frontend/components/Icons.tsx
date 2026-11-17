@@ -39,7 +39,7 @@ export function WorkspaceIcon({ name, size = 22 }: { name: string; size?: number
 }
 
 /** Line icons sharing one stroke style, so chrome buttons match. */
-export function LineIcon({ name, size = 15 }: { name: "plus" | "search" | "close" | "settings" | "sidebar"; size?: number }) {
+export function LineIcon({ name, size = 15 }: { name: "plus" | "search" | "close" | "settings" | "sidebar" | "chevron"; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       {name === "plus" ? <path d="M12 5v14M5 12h14" /> : null}
@@ -50,6 +50,7 @@ export function LineIcon({ name, size = 15 }: { name: "plus" | "search" | "close
         </>
       ) : null}
       {name === "close" ? <path d="M18 6 6 18M6 6l12 12" /> : null}
+      {name === "chevron" ? <path d="m6 9 6 6 6-6" /> : null}
       {name === "sidebar" ? (
         <>
           <rect x="3" y="4" width="18" height="16" rx="3" />

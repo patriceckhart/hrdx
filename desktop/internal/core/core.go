@@ -7,6 +7,7 @@ import (
 
 	"github.com/patriceckhart/hrdx/desktop/internal/prefs"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
 	"github.com/patriceckhart/hrdx/internal/state"
 )
 
@@ -123,10 +124,15 @@ type model struct {
 	keyOverrides     map[string]string
 	problems         []string
 
+	// Nested git repositories, shared with the TUI through state.json.
+	subrepoDepth     int // search depth, 0 = off
+	subrepoLastDepth int // depth restored when the setting is switched back on
+	subrepoGen       int // invalidates scans started before a setting change
+	subrepos         map[string]subrepoCache
+
 	// Preserved untouched for the TUI.
 	tuiSidebarWidth int
 	durableMuted    []string
-	subrepoDepth    int
 	unknownDisabled []string
 
 	customMenus []api.MenuRegister
@@ -183,6 +189,8 @@ func (c *Core) Run() {
 	defer frame.Stop()
 	busy := time.NewTicker(150 * time.Millisecond)
 	defer busy.Stop()
+	subrepoTicker := time.NewTicker(gitinfo.SubrepoInterval)
+	defer subrepoTicker.Stop()
 	for {
 		select {
 		case <-c.done:
@@ -200,6 +208,8 @@ func (c *Core) Run() {
 			}
 		case <-busy.C:
 			c.m.pollBusy()
+		case <-subrepoTicker.C:
+			c.m.refreshSubrepos()
 		}
 	}
 }
@@ -234,6 +244,7 @@ func (c *Core) Start() error {
 	return c.do(func() error {
 		c.m.gcHolderSessions()
 		c.m.startAll()
+		c.m.refreshSubrepos()
 		return nil
 	})
 }

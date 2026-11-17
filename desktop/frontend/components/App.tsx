@@ -7,6 +7,7 @@ import {
   confirmCloseWorkspace,
   floatPicker,
   moveWorkspace,
+  openPicker,
   renameTab,
   renameWorkspace,
   report,
@@ -14,8 +15,8 @@ import {
 } from "@/lib/actions"
 import { activeTab, getView, selectedWorkspace, setView, tabLabel, useView, workspaces } from "@/lib/store"
 import { cssVariables } from "@/lib/theme"
-import type { MenuRegistration, PaneView, View } from "@/lib/types"
-import { openMenu, openModal, terminalByID, toast, useUI, type MenuItem } from "@/lib/ui"
+import type { MenuRegistration, PaneView, SubrepoView, View } from "@/lib/types"
+import { closeModal, openMenu, openModal, terminalByID, toast, useUI, type MenuItem } from "@/lib/ui"
 import ContextMenu from "./ContextMenu"
 import KeyRouter, { configureKeys } from "./KeyRouter"
 import Modals from "./Modals"
@@ -91,8 +92,36 @@ function workspaceMenu(event: MouseEvent, index: number) {
     { label: "Move to group", run: () => moveWorkspace(index, ws.group_path ?? []) },
   ]
   if (view.workspace_folding) items.push({ label: ws.folded ? "Unfold" : "Fold", run: () => report(bridge.workspaceSetFolded(index, !ws.folded)) })
+  if (ws.hidden_subrepos) {
+    items.push({ label: `Show hidden folders (${ws.hidden_subrepos})`, run: () => report(bridge.subrepoUnhide(index)) })
+  }
   items.push(...customItems(view, "sidebar", { workspace: index }))
   items.push({ label: "Close workspace", danger: true, run: () => confirmCloseWorkspace(index) })
+  openMenu({ x: event.clientX, y: event.clientY, items })
+}
+
+/** Where to open a nested repository, like the TUI's sub-repository picker. */
+function subrepoMenu(event: MouseEvent, workspace: number, repo: SubrepoView) {
+  event.preventDefault()
+  const open = (title: string, where: "tab" | "right" | "down") => () =>
+    openPicker(title, (kind) => {
+      closeModal()
+      report(bridge.subrepoOpen(workspace, repo.path, kind, where))
+    })
+  const items: MenuItem[] = [
+    { label: "New tab here", run: open(`New tab in ${repo.rel}`, "tab") },
+    { label: "Split right here", run: open(`Split right in ${repo.rel}`, "right") },
+    { label: "Split down here", run: open(`Split down in ${repo.rel}`, "down") },
+    {
+      label: "Open as workspace",
+      run: () =>
+        openPicker(`Open ${repo.rel} as workspace`, (kind) => {
+          closeModal()
+          report(bridge.workspaceCreate(repo.path, kind))
+        }),
+    },
+    { label: "Hide folder", danger: true, run: () => report(bridge.subrepoHide(workspace, repo.path)) },
+  ]
   openMenu({ x: event.clientX, y: event.clientY, items })
 }
 
@@ -207,7 +236,7 @@ export default function App() {
   return (
     <div className={styles.app} style={themeVars as CSSProperties}>
       <KeyRouter />
-      <Sidebar view={view} onWorkspaceMenu={workspaceMenu} onTabMenu={tabMenu} onPaneMenu={paneMenu} />
+      <Sidebar view={view} onWorkspaceMenu={workspaceMenu} onTabMenu={tabMenu} onPaneMenu={paneMenu} onSubrepoMenu={subrepoMenu} />
       <main className={styles.main}>
         {workspace && tab ? (
           <TabBar workspace={workspace} index={view.selected} onTabMenu={tabMenu} />

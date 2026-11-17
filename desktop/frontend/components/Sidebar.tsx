@@ -4,8 +4,9 @@ import { useRef, useState, type MouseEvent, type PointerEvent } from "react"
 import { bridge } from "@/lib/bridge"
 import { report } from "@/lib/actions"
 import { tabLabel } from "@/lib/store"
-import type { PaneView, View, WorkspaceView } from "@/lib/types"
+import type { PaneView, SubrepoView, View, WorkspaceView } from "@/lib/types"
 import { DRAG_THRESHOLD, reorderTarget } from "@/lib/reorder"
+import { subrepoTree } from "@/lib/subrepos"
 import { openModal } from "@/lib/ui"
 import { AgentIcon, LineIcon, WorkspaceIcon } from "./Icons"
 import { paneStatus } from "./PaneFrame"
@@ -16,6 +17,7 @@ interface Props {
   onWorkspaceMenu: (event: MouseEvent, index: number) => void
   onTabMenu: (event: MouseEvent, workspace: number, tab: number) => void
   onPaneMenu: (event: MouseEvent, pane: PaneView) => void
+  onSubrepoMenu: (event: MouseEvent, workspace: number, repo: SubrepoView) => void
 }
 
 const COLLAPSED = 64
@@ -44,7 +46,7 @@ export function groupTree(workspaces: WorkspaceView[]): GroupNode {
   return root
 }
 
-export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu }: Props) {
+export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu, onSubrepoMenu }: Props) {
   const workspaces = view.workspaces ?? []
   const collapsed = view.sidebar_collapsed
   const settingsKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘," : ""
@@ -163,12 +165,14 @@ export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu }
             <span
               className={styles.fold}
               data-no-drag
+              data-folded={workspace.folded || undefined}
+              title={workspace.folded ? "Unfold" : "Fold"}
               onClick={(event) => {
                 event.stopPropagation()
                 report(bridge.workspaceSetFolded(index, !workspace.folded))
               }}
             >
-              {workspace.folded ? "▸" : "▾"}
+              <LineIcon name="chevron" size={14} />
             </span>
           ) : null}
           <WorkspaceIcon name={workspace.name} />
@@ -182,6 +186,43 @@ export default function Sidebar({ view, onWorkspaceMenu, onTabMenu, onPaneMenu }
             <i className={styles.badge} data-tone="done" />
           ) : null}
         </div>
+        {!folded && workspace.subrepos?.length ? (
+          <div className={styles.subrepos}>
+            {subrepoTree(workspace.subrepos).map((node) => {
+              const repo = node.repo >= 0 ? workspace.subrepos![node.repo]! : null
+              const marker = node.last ? "└" : "├"
+              const indent = { paddingLeft: 42 + node.level * 12 }
+              if (!repo) {
+                return (
+                  <div key={`dir:${node.level}:${node.name}`} className={styles.subrepoFolder} style={indent}>
+                    <span className={styles.subrepoMarker}>{marker}</span>
+                    {node.name}/
+                  </div>
+                )
+              }
+              return (
+                <div
+                  key={repo.path}
+                  className={styles.subrepo}
+                  style={indent}
+                  title={repo.path}
+                  onClick={(event) => onSubrepoMenu(event, index, repo)}
+                  onContextMenu={(event) => onSubrepoMenu(event, index, repo)}
+                >
+                  <span className={styles.subrepoMarker}>{marker}</span>
+                  <span className={styles.subrepoName}>{node.name}</span>
+                  {repo.branch ? <span className={styles.subrepoBranch}>{repo.branch}</span> : null}
+                  <span className={styles.subrepoStats}>
+                    {repo.conflicts ? <span data-tone="conflict">!{repo.conflicts}</span> : null}
+                    {repo.changed ? <span data-tone="changed">●{repo.changed}</span> : null}
+                    {repo.ahead ? <span data-tone="ahead">↑{repo.ahead}</span> : null}
+                    {repo.behind ? <span data-tone="behind">↓{repo.behind}</span> : null}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
         {!folded
           ? tabs.map((tab, tabIndex) => {
               const panes = [...(tab.panes ?? []), ...(tab.floats ?? [])]

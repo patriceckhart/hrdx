@@ -170,11 +170,31 @@
   min-width: 0;
 }
 
+/* Fold toggle: a chevron that points right when folded. */
 .fold {
-  width: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0 -4px 0 -6px;
+  border-radius: 5px;
   color: var(--text-3);
-  font-size: 10px;
-  margin-right: -4px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.fold:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.fold svg {
+  transition: transform 140ms ease;
+}
+
+.fold[data-folded] svg {
+  transform: rotate(-90deg);
 }
 
 .branch {
@@ -211,6 +231,76 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Nested git repositories, drawn as a small tree like the TUI. */
+.subrepos {
+  padding: 2px 0;
+}
+
+.subrepo,
+.subrepoFolder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-right: 10px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.subrepo {
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.subrepo:hover {
+  background: var(--surface);
+}
+
+.subrepoMarker {
+  flex: none;
+  color: var(--text-3);
+  opacity: 0.6;
+}
+
+.subrepoName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+
+.subrepoBranch {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subrepoStats {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.subrepoStats [data-tone="conflict"] {
+  color: var(--hrdx-bad);
+}
+
+.subrepoStats [data-tone="changed"] {
+  color: var(--hrdx-busy);
+}
+
+.subrepoStats [data-tone="ahead"] {
+  color: var(--hrdx-good);
+}
+
+.subrepoStats [data-tone="behind"] {
+  color: var(--hrdx-alt);
 }
 
 .tab {

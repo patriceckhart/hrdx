@@ -1,38 +1,30 @@
 package ui
 
 import (
-	"bufio"
-	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/patriceckhart/hrdx/internal/api"
+	"github.com/patriceckhart/hrdx/internal/gitinfo"
 )
 
 // Sub-repositories are scanned and inspected off the update loop; the
 // sidebar only reads the cached result, so a slow git never stalls
 // rendering.
 
+// Scanning and git status parsing live in internal/gitinfo, shared with
+// hrdx Desktop.
 const (
-	maxSubrepoDepth   = 3
-	subrepoLimit      = 24
-	subrepoWorkers    = 4
-	subrepoInterval   = 15 * time.Second
-	subrepoGitTimeout = 3 * time.Second
+	maxSubrepoDepth = gitinfo.MaxSubrepoDepth
+	subrepoLimit    = gitinfo.SubrepoLimit
+	subrepoInterval = gitinfo.SubrepoInterval
 )
-
-// Dependency trees can contain thousands of vendored repositories.
-var subrepoSkipDirs = map[string]bool{"node_modules": true, "vendor": true}
 
 type subrepo struct {
 	path      string
@@ -135,126 +127,33 @@ func refreshSubrepos(gen int, root string, depth int, hidden map[string]bool) te
 }
 
 func collectSubrepos(root string, depth int, hidden map[string]bool) []subrepo {
-	paths := scanSubrepos(root, depth, subrepoLimit, hidden)
-	repos := make([]subrepo, len(paths))
-	slots := make(chan struct{}, subrepoWorkers)
-	var wait sync.WaitGroup
-	for index, path := range paths {
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			rel = filepath.Base(path)
-		}
-		repos[index] = subrepo{path: path, rel: filepath.ToSlash(rel)}
-		wait.Add(1)
-		slots <- struct{}{}
-		go func(target *subrepo) {
-			defer wait.Done()
-			defer func() { <-slots }()
-			status := readGitStatusFunc(target.path)
-			status.path, status.rel = target.path, target.rel
-			*target = status
-		}(&repos[index])
+	found := gitinfo.CollectSubrepos(root, depth, hidden, func(dir string) gitinfo.RepoStatus {
+		return readGitStatusFunc(dir).status()
+	})
+	repos := make([]subrepo, len(found))
+	for index, repo := range found {
+		repos[index] = fromStatus(repo.RepoStatus)
+		repos[index].path, repos[index].rel = repo.Path, repo.Rel
 	}
-	wait.Wait()
 	return repos
 }
 
-// scanSubrepos does not descend into found repositories, and skipped
-// directories do not count toward the limit. Symlinks are not followed, so
-// cycles cannot occur.
 func scanSubrepos(root string, depth, limit int, hidden map[string]bool) []string {
-	var found []string
-	var walk func(dir string, level int)
-	walk = func(dir string, level int) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return
-		}
-		for _, entry := range entries {
-			if len(found) >= limit {
-				return
-			}
-			name := entry.Name()
-			if !entry.IsDir() || strings.HasPrefix(name, ".") || subrepoSkipDirs[name] {
-				continue
-			}
-			path := filepath.Join(dir, name)
-			if rel, err := filepath.Rel(root, path); err == nil && hidden[filepath.ToSlash(rel)] {
-				continue
-			}
-			if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
-				found = append(found, path)
-				continue
-			}
-			if level < depth {
-				walk(path, level+1)
-			}
-		}
-	}
-	if depth > 0 && limit > 0 {
-		walk(root, 1)
-	}
-	return found
+	return gitinfo.ScanSubrepos(root, depth, limit, hidden)
 }
 
-// Without git, or when it fails, the branch still comes from .git/HEAD.
-func readGitStatus(dir string) subrepo {
-	fallback := subrepo{branch: readGitBranch(dir)}
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		return fallback
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), subrepoGitTimeout)
-	defer cancel()
-	command := exec.CommandContext(ctx, gitPath, "-C", dir, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
-	output, err := command.Output()
-	if err != nil {
-		return fallback
-	}
-	status := parseGitStatus(string(output))
-	if status.branch == "" {
-		status.branch = fallback.branch
-	}
-	return status
+func readGitStatus(dir string) subrepo { return fromStatus(gitinfo.ReadStatus(dir)) }
+
+func parseGitStatus(output string) subrepo { return fromStatus(gitinfo.ParseStatus(output)) }
+
+func fromStatus(status gitinfo.RepoStatus) subrepo {
+	return subrepo{branch: status.Branch, ahead: status.Ahead, behind: status.Behind,
+		changed: status.Changed, conflicts: status.Conflicts}
 }
 
-// parseGitStatus reads `git status --porcelain=v2 --branch`.
-func parseGitStatus(output string) subrepo {
-	var status subrepo
-	oid := ""
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case strings.HasPrefix(line, "# branch.oid "):
-			oid = strings.TrimPrefix(line, "# branch.oid ")
-		case strings.HasPrefix(line, "# branch.head "):
-			status.branch = strings.TrimPrefix(line, "# branch.head ")
-		case strings.HasPrefix(line, "# branch.ab "):
-			for _, field := range strings.Fields(strings.TrimPrefix(line, "# branch.ab ")) {
-				value, err := strconv.Atoi(field[1:])
-				if err != nil || value < 0 {
-					continue
-				}
-				if field[0] == '+' {
-					status.ahead = value
-				} else if field[0] == '-' {
-					status.behind = value
-				}
-			}
-		case strings.HasPrefix(line, "u "):
-			status.conflicts++
-		case strings.HasPrefix(line, "1 "), strings.HasPrefix(line, "2 "), strings.HasPrefix(line, "? "):
-			status.changed++
-		}
-	}
-	if status.branch == "(detached)" {
-		status.branch = ""
-		if len(oid) >= 7 {
-			status.branch = oid[:7]
-		}
-	}
-	return status
+func (s subrepo) status() gitinfo.RepoStatus {
+	return gitinfo.RepoStatus{Branch: s.branch, Ahead: s.ahead, Behind: s.behind,
+		Changed: s.changed, Conflicts: s.conflicts}
 }
 
 func (m Model) subrepoRows(spaceIndex int, rail string, width int) []sidebarRow {
@@ -412,17 +311,7 @@ func (m *Model) openSubrepoPicker(owner *space, path string, at rect) {
 
 // cleanSubrepoRel rejects saved paths that could point outside the
 // workspace.
-func cleanSubrepoRel(rel string) string {
-	rel = strings.TrimSpace(filepath.ToSlash(rel))
-	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") {
-		return ""
-	}
-	rel = filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel)))
-	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
-		return ""
-	}
-	return rel
-}
+func cleanSubrepoRel(rel string) string { return gitinfo.CleanSubrepoRel(rel) }
 
 // hiddenSubreposFor merges every workspace sharing root, since they share
 // one scan result.

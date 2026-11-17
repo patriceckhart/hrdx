@@ -47,6 +47,11 @@ type WorkspaceView struct {
 	Folded    bool      `json:"folded,omitempty"`
 	Active    int       `json:"active"`
 	Tabs      []TabView `json:"tabs"`
+	// Subrepos lists nested git repositories when the setting is on and a
+	// scan has completed.
+	Subrepos []SubrepoView `json:"subrepos,omitempty"`
+	// HiddenSubrepos counts folders hidden from the list.
+	HiddenSubrepos int `json:"hidden_subrepos,omitempty"`
 }
 
 // TabView is one tab with its split tree and floats.
@@ -145,7 +150,8 @@ func (m *model) view() View {
 	focused := m.currentPane()
 	for _, current := range m.spaces {
 		ws := WorkspaceView{GroupPath: slices.Clone(current.groupPath), Name: current.name,
-			Path: current.cwd, Branch: branch(current.cwd), Folded: current.folded, Active: current.active}
+			Path: current.cwd, Branch: branch(current.cwd), Folded: current.folded, Active: current.active,
+			Subrepos: m.subrepoViews(current.cwd), HiddenSubrepos: len(current.hiddenSubrepos)}
 		for _, currentTab := range current.tabs {
 			tv := TabView{Name: currentTab.name, Layout: nodeView(currentTab.layout)}
 			if len(currentTab.panes) > 0 {
@@ -224,6 +230,7 @@ type SettingsView struct {
 	AutoCopy         bool        `json:"auto_copy"`
 	SplitDirection   string      `json:"split_direction"`
 	WorkspaceFolding bool        `json:"workspace_folding"`
+	SubrepoDepth     int         `json:"subrepo_depth"`
 	Prefs            prefs.Prefs `json:"prefs"`
 }
 
@@ -232,7 +239,7 @@ func (m *model) settings(notifySupported bool) SettingsView {
 	out := SettingsView{DefaultAgent: m.config.DefaultAgent, Sound: m.soundOn, SoundKind: m.soundKind,
 		SoundKinds: sound.Kinds(), Notify: m.notifyOn, NotifySupported: notifySupported,
 		Theme: m.themeName, Themes: theme.Names(), AutoCopy: m.autoCopy,
-		SplitDirection: m.splitDirection, WorkspaceFolding: m.foldEnabled, Prefs: m.prefs}
+		SplitDirection: m.splitDirection, WorkspaceFolding: m.foldEnabled, SubrepoDepth: m.subrepoDepth, Prefs: m.prefs}
 	for _, spec := range agent.Specs {
 		out.Agents = append(out.Agents, AgentView{Kind: spec.Kind, Installed: installed[spec.Kind],
 			Enabled: !m.disabled[spec.Kind], Custom: spec.Custom})
