@@ -12,7 +12,7 @@ import { xtermTheme } from "@/lib/theme"
 import type { OutputEvent } from "@/lib/types"
 import { keyName } from "@/lib/keys"
 import { copiedToast, registerTerminal } from "@/lib/ui"
-import { debounce, decodeBase64, encodeBinary, normalizePaste, overrideKey, SeqGate, suppressQueries } from "@/lib/xterm"
+import { debounce, decodeBase64, EchoGuard, encodeBinary, normalizePaste, overrideKey, SeqGate, suppressQueries } from "@/lib/xterm"
 import { handleTerminalKey } from "./KeyRouter"
 import styles from "./Terminal.module.css"
 
@@ -129,14 +129,20 @@ export default function Terminal({ paneID, focused, kittyKeys }: Props) {
     }
     element.addEventListener("paste", onPaste, true)
 
-    const input = xterm.onData((data) => bridge.paneInput(paneID, data))
+    const echo = new EchoGuard()
+    const input = xterm.onData((data) => {
+      if (echo.filter(data)) bridge.paneInput(paneID, data)
+    })
     const binary = xterm.onBinary((data) => bridge.paneInputBinary(paneID, encodeBinary(data)))
     xterm.attachCustomKeyEventHandler((event) => {
       // The prefix and native shortcuts are routed first.
+      if (event.type === "keyup") echo.release()
       if (handleTerminalKey(event, keyName(event))) return false
       const override = overrideKey(event, kitty.current, IS_MAC)
       if (override !== undefined) {
         event.preventDefault()
+        // Only printable characters can come back as composed text.
+        if (!override.startsWith("\x1b") && override.length <= 2 && override >= " ") echo.sent(override)
         bridge.paneInput(paneID, override)
         return false
       }

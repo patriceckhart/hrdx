@@ -55,6 +55,10 @@ export interface KeyEventLike {
   key: string
   /** Physical key, e.g. "Digit1". Optional so tests can omit it. */
   code?: string
+  /** True while an IME or dead key composes. Optional for tests. */
+  isComposing?: boolean
+  /** 229 while the input method processes the key. Optional for tests. */
+  keyCode?: number
   ctrlKey: boolean
   altKey: boolean
   shiftKey: boolean
@@ -87,8 +91,11 @@ export function overrideKey(event: KeyEventLike, kitty: boolean, mac = false): s
   // macOS Option composes characters (Option+L is @ on German layouts).
   // xterm.js leaves these to the textarea input event, which WKWebView does
   // not deliver reliably, so send the composed character directly. Dead
-  // keys report "Dead" and still go through composition.
-  if (mac && event.altKey && !event.ctrlKey && [...event.key].length === 1) return event.key
+  // keys report "Dead" and still go through composition. So do keys the
+  // input method is processing (keyCode 229): WebKit may already report the
+  // dead key's character ("~" for Option+N on German layouts) while macOS
+  // still composes it, and sending it here would type it twice.
+  if (mac && event.altKey && !event.ctrlKey && [...event.key].length === 1 && !composing(event)) return event.key
   const mods = (event.shiftKey ? 1 : 0) + (event.altKey ? 2 : 0) + (event.ctrlKey ? 4 : 0)
   if (event.key === "Enter") {
     if (kitty && mods !== 0) return `\x1b[13;${mods + 1}u`
@@ -117,6 +124,38 @@ export function overrideKey(event: KeyEventLike, kitty: boolean, mac = false): s
     }
   }
   return undefined
+}
+
+function composing(event: KeyEventLike): boolean {
+  return event.isComposing === true || event.keyCode === 229
+}
+
+/**
+ * Drops the echo of a character overrideKey already sent. When WebKit still
+ * delivers the composed text for the same key press, xterm.js would forward
+ * it too. sent() arms the guard, filter() swallows one exact repeat until
+ * the key is released.
+ */
+export class EchoGuard {
+  private pending = ""
+
+  sent(text: string): void {
+    this.pending = text
+  }
+
+  release(): void {
+    this.pending = ""
+  }
+
+  /** Returns false when data is the echo to drop. */
+  filter(data: string): boolean {
+    if (this.pending !== "" && data === this.pending) {
+      this.pending = ""
+      return false
+    }
+    this.pending = ""
+    return true
+  }
 }
 
 /**

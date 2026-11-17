@@ -1,6 +1,34 @@
 import { describe, expect, test } from "bun:test"
 import { Terminal } from "@xterm/headless"
-import { normalizePaste, overrideKey, quotePaths, SeqGate, suppressQueries } from "../lib/xterm"
+import { EchoGuard, normalizePaste, overrideKey, quotePaths, SeqGate, suppressQueries } from "../lib/xterm"
+
+describe("dead keys and echoes", () => {
+  const base = { type: "keydown", ctrlKey: false, altKey: true, shiftKey: false, metaKey: false }
+
+  test("composing option keys are left to the input method", () => {
+    // Option+N on a German layout composes "~". WebKit can report the
+    // character already, so sending it here would type it twice.
+    expect(overrideKey({ ...base, key: "~", keyCode: 229 }, false, true)).toBeUndefined()
+    expect(overrideKey({ ...base, key: "~", isComposing: true }, false, true)).toBeUndefined()
+    // An ordinary option character is still sent directly.
+    expect(overrideKey({ ...base, key: "@", keyCode: 76 }, false, true)).toBe("@")
+  })
+
+  test("echo guard drops one exact repeat of a sent character", () => {
+    const guard = new EchoGuard()
+    guard.sent("~")
+    expect(guard.filter("~")).toBe(false)
+    expect(guard.filter("~")).toBe(true) // a second, real press passes
+
+    guard.sent("@")
+    expect(guard.filter("a")).toBe(true) // different text disarms the guard
+    expect(guard.filter("@")).toBe(true)
+
+    guard.sent("@")
+    guard.release() // key released without an echo
+    expect(guard.filter("@")).toBe(true)
+  })
+})
 
 describe("paste", () => {
   test("line endings become CR like a terminal paste", () => {
