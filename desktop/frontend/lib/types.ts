@@ -157,3 +157,54 @@ export interface OutputEvent {
   seq: number
   data: string
 }
+
+/** Highlighted text run from internal/review. c is the syntax class. */
+export interface Span {
+  t: string
+  c?: "keyword" | "string" | "comment" | "number" | "type" | "func" | "punct"
+}
+
+export interface FileEntry {
+  name: string
+  dir: boolean
+}
+
+export interface FolderListing {
+  entries: FileEntry[] | null
+  limited?: boolean
+  marks?: Record<string, string> | null
+  error?: string
+}
+
+export interface FilePreview {
+  lines: Span[][] | null
+  note?: string
+}
+
+export interface ChangedFile {
+  path: string
+  status: "M" | "A" | "D" | "U"
+  add: number
+  del: number
+  binary?: boolean
+  fresh?: boolean
+}
+
+export interface ChangesResult {
+  root?: string
+  files: ChangedFile[] | null
+  limited?: boolean
+  error?: string
+}
+
+export interface DiffLine {
+  /** "@" hunk header, "+", "-", " " context, "" other */
+  k: string
+  n?: number
+  s: Span[] | null
+}
+
+export interface DiffResult {
+  lines: DiffLine[] | null
+  note?: string
+}

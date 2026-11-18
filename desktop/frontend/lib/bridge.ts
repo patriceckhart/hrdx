@@ -3,7 +3,17 @@
 // happens lazily inside a call, never at module scope: the static prerender
 // runs in Node.
 
-import type { AttachResult, SettingsPatch, SettingsView, UpdateInfo, View } from "./types"
+import type {
+  AttachResult,
+  ChangesResult,
+  DiffResult,
+  FilePreview,
+  FolderListing,
+  SettingsPatch,
+  SettingsView,
+  UpdateInfo,
+  View,
+} from "./types"
 
 type AppBindings = Record<string, (...args: unknown[]) => Promise<unknown>>
 
@@ -69,6 +79,12 @@ export const bridge = {
   subrepoOpen: (workspace: number, path: string, kind: string, where: "tab" | "right" | "down") =>
     call<void>("SubrepoOpen", workspace, path, kind, where),
   subrepoHide: (workspace: number, path: string) => call<void>("SubrepoHide", workspace, path),
+
+  reviewDir: () => call<string>("ReviewDir"),
+  reviewList: (rel: string) => call<FolderListing>("ReviewList", rel),
+  reviewPreview: (rel: string) => call<FilePreview>("ReviewPreview", rel),
+  reviewChanges: () => call<ChangesResult>("ReviewChanges"),
+  reviewDiff: (path: string) => call<DiffResult>("ReviewDiff", path),
   subrepoUnhide: (workspace: number) => call<void>("SubrepoUnhide", workspace),
   workspaceSetFolded: (index: number, folded: boolean) => call<void>("WorkspaceSetFolded", index, folded),
   workspaceRename: (index: number, name: string) => call<void>("WorkspaceRename", index, name),

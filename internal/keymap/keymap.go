@@ -48,6 +48,8 @@ var Defaults = map[string][]string{
 	"pane-next":      {"tab"},
 	"pane-prev":      {"shift+tab"},
 	"find":           {"/"},
+	"files":          {"e"},
+	"changes":        {"g"},
 	"close-pane":     {"x"},
 	"close-space":    {"X"},
 	"equalize":       {"="},

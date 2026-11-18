@@ -95,6 +95,7 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `]` or `[` | Next / previous workspace |
 | `tab` or `shift+tab` | Next / previous pane; stays in prefix mode for repeated jumps, `esc` exits |
 | `/` | Fuzzy finder over groups, workspaces, tabs, and panes: type to filter, arrows select, enter jumps |
+| `e` or `g` | Open or close the read-only Files / Changes panel (see [Files and Changes](#files-and-changes)) |
 | `b` | Collapse or expand the workspace sidebar |
 | `P` | Open experimental plugin lifecycle controls |
 | `D` | Open the durable agents panel for the current workspace (see [Durable agents](#durable-agents)) |
@@ -131,7 +132,7 @@ Keys are configurable via a `keys.json` next to the state file (`~/Library/Appli
 }
 ```
 
-Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `split-cycle`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `tab-move-left`, `tab-move-right`, `tab-1` through `tab-9`, `tab-0`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
+Actions: `prefix`, `literal`, `quit`, `picker-right`, `picker-down`, `agent-right`, `agent-down`, `agent-cycle` (unbound by default), `shell-right`, `shell-down`, `split-cycle`, `workspace`, `tab-new`, `tab-next`, `tab-prev`, `tab-move-left`, `tab-move-right`, `tab-1` through `tab-9`, `tab-0`, `space-next`, `space-prev`, `pane-next`, `pane-prev`, `find`, `files`, `changes`, `sidebar-toggle`, `close-pane`, `close-space`, `equalize`, `rename`, `menu`, `settings`, `plugins`, `scroll-up`, `scroll-down`, `live`, `navigate-up`, `navigate-down`.
 
 ## Mouse
 
@@ -150,6 +151,15 @@ Turn on **allow folding workspaces in the sidebar** under the terminal tab in se
 A workspace can also list the Git repositories nested inside its directory. Enable it with the **show nested git repositories in the sidebar** checkbox under the terminal tab in settings (off by default); once checked, the rows below it choose how deep to search (1 to 3 folder levels). Unchecking and checking again restores the previous depth. Repositories appear below the workspace's branch row as an indented tree: folders that only lead to deeper repositories are shown once as dimmed `name/` rows, which do not react to clicks. Each repository shows its name, branch, and status: `●n` changed or untracked files, `!n` merge conflicts, `↑n`/`↓n` commits ahead of or behind its upstream. Hidden directories, `node_modules`, and `vendor` are skipped, repositories inside a found repository are not searched, and at most 24 are listed per workspace. Status is refreshed in the background every 15 seconds with at most four `git status` processes at a time, so rendering never waits for Git; without Git only the branch is shown. The compact sidebar hides these rows.
 
 Clicking a repository row's text (or right-clicking anywhere on the row) asks where to open it: a new tab, a split right or down of the focused pane, or a separate workspace; the row stays highlighted while you choose. **Hide folder** removes a repository from that workspace's list; hidden folders, and everything below them, are no longer scanned. The workspace context menu offers **Show hidden folders (n)** to bring them all back. The hidden list is saved per workspace as optional `hidden_subrepos` paths relative to the workspace directory. A pane opened in a repository keeps that start directory across restarts (saved as the pane's optional `cwd`); if the directory has disappeared, the pane falls back to the workspace directory. With the setting enabled, `status` adds an optional `subrepos` array to each workspace once a scan has completed.
+
+### Files and Changes
+
+Two read-only panels dock right of the panes, like herdr's. They follow the focused pane's folder (its start folder, or the workspace's) and refresh every 5 seconds while open. Nothing in them writes to disk or to git: there is no editor and no commit box.
+
+- **Files** (`ctrl+b e`) is a folder tree. Folders open lazily, `.git` is hidden, and each folder lists at most 500 entries. Files and folders with uncommitted changes are colored and marked `M`, `A`, `D`, or `U`. Opening a file shows a syntax-highlighted preview with line numbers (up to 512 KiB and 5,000 lines; binary files show a note).
+- **Changes** (`ctrl+b g`) lists the repository's uncommitted changes against `HEAD`, untracked files included, with each file's added and deleted line counts and the totals. Opening a file shows its highlighted diff with line numbers. Git runs with `--no-optional-locks` and without index refreshes, so the panel never touches the index or takes a lock.
+
+In the TUI, opening a panel moves the keyboard into it: arrows or `j`/`k` move, `enter` or `l` opens a folder or file, `h` or `left` goes back up, `tab` switches between the panels, `esc` steps back from a preview or diff and then closes the panel, and the prefix key still works. Clicking a row opens it, the wheel scrolls, `x` in the header closes, and clicking a pane returns the keyboard to it. The panes shrink while a panel is open and their PTYs resize accordingly. In the desktop app, **Files** and **Changes** buttons sit at the right of the tab bar.
 
 ## Remote and container panes
 
@@ -532,6 +542,8 @@ make check          # go vet, go test -race, frontend typecheck, lint, tests, an
 `hrdx-desktop` accepts `--cwd` (repeatable), `--agent`, `--provider`, `--model`, `--reasoning`, `--continue`, `--zot-bin`, `--pi-bin`, `--claude-bin`, `--codex-bin`, `--shell`, `--state`, `--fresh`, `--api`, `--persist`, and `--version`, with the same meanings and defaults as `hrdx`. Without `--cwd` and saved workspaces it opens empty with a New workspace prompt. On macOS it reads `PATH` from your login shell once at startup, so agents installed through Homebrew or `~/.local/bin` resolve as they do in a terminal.
 
 Keys follow the TUI: the prefix (`ctrl+b`, remappable in `keys.json`) and every prefix action work, including `tab` and `shift+tab` repeats until `esc`. Native shortcuts are layered on top: `cmd+q` quit, `cmd+,` settings, `cmd+w` close pane, `cmd+t` new tab, `cmd+k` find, `cmd+c` and `cmd+v` copy and paste (`ctrl+shift+` on Linux and Windows, so plain control keys stay terminal input). Escape and control keys are never reserved. Right-click opens the same scoped context menus, with `menu.register` entries appended. Dividers drag, and a double-click resets one to an even split.
+
+The Files and Changes buttons at the right of the tab bar open the same read-only panels as `ctrl+b e` and `ctrl+b g` (see [Files and Changes](#files-and-changes)): a folder tree with highlighted previews, and the uncommitted changes with highlighted diffs.
 
 Nested repositories work as in the TUI and share its settings: turn on **Nested repositories** under Behavior in settings and pick a search depth of 1 to 3 levels (saved as `subrepo_depth`). Each workspace then lists the git repositories below it with branch, changed files (`●`), ahead (`↑`), behind (`↓`), and conflicts (`!`), refreshed every 15 seconds. Clicking or right-clicking a repository offers New tab here, Split right here, Split down here, Open as workspace, and Hide folder. The workspace menu offers Show hidden folders (n). Hidden folders are the same `hidden_subrepos` list the TUI uses, and `status` reports the same optional `subrepos` array.
 

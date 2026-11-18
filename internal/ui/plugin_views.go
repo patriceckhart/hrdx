@@ -27,7 +27,11 @@ type pluginView struct {
 // strip at the edge of the terminal area, after the tab bar row.
 func (m Model) pluginViewBox(view *pluginView) rect {
 	if view.Dock != "" {
-		box := m.dockedViewBox(view, m.fullTerminalArea())
+		// Docked views sit inside the room the Files or Changes panel
+		// leaves, so the two never overlap.
+		area := m.fullTerminalArea()
+		area.w = max(minPaneCols, area.w-m.reviewStripWidth(area))
+		box := m.dockedViewBox(view, area)
 		box.x += m.sidebarContentWidth() + 1
 		box.y++ // tab bar row
 		return box

@@ -134,3 +134,33 @@
   background: var(--surface-2);
   color: var(--text);
 }
+
+/* Files and Changes: icon and label, like herdr. */
+.panelButton {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  --wails-draggable: no-drag;
+}
+
+.panelButton:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.panelButton[data-active] {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}

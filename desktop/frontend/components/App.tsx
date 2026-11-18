@@ -21,6 +21,7 @@ import ContextMenu from "./ContextMenu"
 import KeyRouter, { configureKeys } from "./KeyRouter"
 import Modals from "./Modals"
 import Sidebar from "./Sidebar"
+import ReviewPanel from "./ReviewPanel"
 import SplitView from "./SplitView"
 import TabBar from "./TabBar"
 import UpdateNotice from "./UpdateNotice"
@@ -131,6 +132,8 @@ function PrefixHint({ view }: { view: View }) {
     ["tab-new", "tab"],
     ["workspace", "workspace"],
     ["find", "find"],
+    ["files", "files"],
+    ["changes", "changes"],
     ["pane-next", "next pane"],
     ["rename", "rename"],
     ["close-pane", "close"],
@@ -257,7 +260,10 @@ export default function App() {
         {workspace && tab ? (
           <>
             {/* Only the active tab mounts terminals; inactive ones remount from the replay ring. */}
-            <SplitView key={`${view.selected}:${workspace.active}`} tab={tab} path={workspace.path} onPaneMenu={paneMenu} />
+            <div className={styles.work}>
+              <SplitView key={`${view.selected}:${workspace.active}`} tab={tab} path={workspace.path} onPaneMenu={paneMenu} />
+              {ui.panel ? <ReviewPanel panel={ui.panel} /> : null}
+            </div>
           </>
         ) : (
           <EmptyState />

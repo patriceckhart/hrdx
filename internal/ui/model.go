@@ -53,6 +53,7 @@ const (
 	modeFind
 	modePluginView
 	modeDurablePrompt
+	modeReview // keyboard browses the Files or Changes panel
 )
 
 // menuItem is one entry of the right-click context menu.
@@ -237,6 +238,7 @@ type Model struct {
 	pluginNotices       map[string]time.Time
 	pluginSubscriptions map[string]*pluginSubscription
 	pluginTicking       bool
+	review              reviewPanel // read-only Files or Changes panel
 	pluginViews         map[string]*pluginView
 	pluginViewOrder     []string
 	pluginViewFocus     string
@@ -828,6 +830,7 @@ func (m *Model) setSidebarWidth(width int) {
 // about them, so every persistent pane still appears exactly once in it.
 func (m Model) terminalArea() rect {
 	area := m.fullTerminalArea()
+	area.w = max(minPaneCols, area.w-m.reviewStripWidth(area))
 	for _, id := range m.pluginViewOrder {
 		view := m.pluginViews[id]
 		if view == nil || view.Dock == "" {
@@ -910,7 +913,8 @@ func (m *Model) resizePanes(target *space) {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	messages, pending := m.mouseInput.decode(message)
 	if len(messages) == 1 && pending == nil {
-		return m.update(messages[0])
+		updated, command := m.update(messages[0])
+		return followReviewAfter(updated, command)
 	}
 	commands := []tea.Cmd{pending}
 	for _, decoded := range messages {
@@ -918,12 +922,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m = updated.(Model)
 		commands = append(commands, command)
 	}
-	return m, tea.Batch(commands...)
+	return followReviewAfter(m, tea.Batch(commands...))
+}
+
+// followReviewAfter keeps the Files or Changes panel on the focused pane's
+// folder, whatever moved the focus.
+func followReviewAfter(updated tea.Model, command tea.Cmd) (tea.Model, tea.Cmd) {
+	model, ok := updated.(Model)
+	if !ok {
+		return updated, command
+	}
+	if follow := model.followReview(); follow != nil {
+		return model, tea.Batch(command, follow)
+	}
+	return model, command
 }
 
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if handled, cmd := m.updateContinuous(message); handled {
 		return m, cmd
+	}
+	if handled, updated, cmd := m.updateReview(message); handled {
+		return updated, cmd
 	}
 	switch msg := message.(type) {
 	case pluginTickMsg:
@@ -1196,7 +1216,12 @@ func keyFromBytes(legacy []byte, code rune, mods int) tea.KeyMsg {
 }
 
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.mode == modeReview && m.review.kind == reviewNone {
+		m.mode = modeTerminal
+	}
 	switch m.mode {
+	case modeReview:
+		return m.updateReviewKey(msg)
 	case modePluginView:
 		return m.updatePluginViewKey(msg)
 	case modeDurablePrompt:
@@ -1428,6 +1453,12 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cyclePane(-1)
 	case "find":
 		return m.openFind()
+	case "files", "changes":
+		cmd := m.toggleReview(action)
+		if m.review.kind != reviewNone {
+			m.mode = modeReview
+		}
+		return m, cmd
 	case "close-pane":
 		m.closeCurrentPane()
 	case "close-space":
@@ -1957,6 +1988,9 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.pluginViewMouse(msg) {
 		return m, nil
+	}
+	if handled, cmd := m.reviewMouse(msg); handled {
+		return m, cmd
 	}
 
 	sidebarContentWidth := m.sidebarContentWidth()
@@ -2767,6 +2801,11 @@ func (m Model) View() string {
 	sidebar := m.renderSidebar()
 	right := m.renderTabBar() + "\n" + m.renderTerminal()
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, right)
+	if m.review.kind != reviewNone {
+		rows := strings.Split(body, "\n")
+		m.renderReview(rows)
+		body = strings.Join(rows, "\n")
+	}
 	if len(m.pluginViews) > 0 {
 		rows := strings.Split(body, "\n")
 		m.overlayPluginViews(rows)
@@ -3408,6 +3447,7 @@ func (m Model) prefixHintEntries() [][2]string {
 		{keys("space-next", "space-prev"), "workspaces"},
 		{keys("pane-next"), "panes"},
 		{keys("find"), "find"},
+		{keys("files", "changes"), "files changes"},
 		{keys("rename"), "rename"},
 		{keys("equalize"), "equal"},
 		{keys("sidebar-toggle"), "sidebar"},

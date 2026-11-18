@@ -94,6 +94,26 @@ export function RetryHolder() {
   return window['go']['bridge']['App']['RetryHolder']();
 }
 
+export function ReviewChanges() {
+  return window['go']['bridge']['App']['ReviewChanges']();
+}
+
+export function ReviewDiff(arg1) {
+  return window['go']['bridge']['App']['ReviewDiff'](arg1);
+}
+
+export function ReviewDir() {
+  return window['go']['bridge']['App']['ReviewDir']();
+}
+
+export function ReviewList(arg1) {
+  return window['go']['bridge']['App']['ReviewList'](arg1);
+}
+
+export function ReviewPreview(arg1) {
+  return window['go']['bridge']['App']['ReviewPreview'](arg1);
+}
+
 export function SetUpdater(arg1) {
   return window['go']['bridge']['App']['SetUpdater'](arg1);
 }

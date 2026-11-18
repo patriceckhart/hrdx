@@ -12,6 +12,7 @@ import (
 	"github.com/patriceckhart/hrdx/desktop/internal/core"
 	"github.com/patriceckhart/hrdx/desktop/internal/updater"
 	"github.com/patriceckhart/hrdx/internal/paths"
+	"github.com/patriceckhart/hrdx/internal/review"
 	"github.com/patriceckhart/hrdx/internal/sound"
 	"github.com/patriceckhart/hrdx/internal/theme"
 )
@@ -98,6 +99,21 @@ func (a *App) WorkspaceMove(index int, groupPath []string) error {
 func (a *App) SubrepoOpen(workspace int, path, kind, where string) error {
 	return a.core.SubrepoOpen(workspace, path, kind, where)
 }
+
+// ReviewDir returns the folder the Files and Changes panels show.
+func (a *App) ReviewDir() (string, error) { return a.core.ReviewDir() }
+
+// ReviewList lists a folder of the Files panel, relative to its folder.
+func (a *App) ReviewList(rel string) core.FolderListing { return a.core.ReviewList(rel) }
+
+// ReviewPreview returns a highlighted read-only file preview.
+func (a *App) ReviewPreview(rel string) review.Preview { return a.core.ReviewPreview(rel) }
+
+// ReviewChanges lists the uncommitted changes for the Changes panel.
+func (a *App) ReviewChanges() review.Changes { return a.core.ReviewChanges() }
+
+// ReviewDiff returns the highlighted diff of one changed file.
+func (a *App) ReviewDiff(path string) review.Diff { return a.core.ReviewDiff(path) }
 
 // SubrepoHide hides a nested repository from a workspace's list.
 func (a *App) SubrepoHide(workspace int, path string) error {

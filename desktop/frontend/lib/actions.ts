@@ -2,7 +2,7 @@
 
 import { bridge, errorMessage } from "./bridge"
 import { activeTab, focusedPane, getView, selectedWorkspace, workspaces } from "./store"
-import { closeModal, focusedTerminal, openModal, toast } from "./ui"
+import { closeModal, focusedTerminal, openModal, toast, togglePanel } from "./ui"
 
 /** Reports a rejected bridge call as a toast. */
 export function report(promise: Promise<unknown>): void {
@@ -143,6 +143,12 @@ export function runAction(action: string): boolean {
       return true
     case "settings":
       openModal({ kind: "settings" })
+      return true
+    case "files":
+      togglePanel("files")
+      return true
+    case "changes":
+      togglePanel("changes")
       return true
     case "menu": {
       const pane = focusedPane(view)

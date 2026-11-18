@@ -5,7 +5,7 @@ import { bridge } from "@/lib/bridge"
 import { report, splitPicker } from "@/lib/actions"
 import { tabLabel } from "@/lib/store"
 import type { PaneView, WorkspaceView } from "@/lib/types"
-import { openModal } from "@/lib/ui"
+import { openModal, togglePanel, useUI } from "@/lib/ui"
 import { AgentIcon, LineIcon } from "./Icons"
 import styles from "./TabBar.module.css"
 
@@ -25,6 +25,7 @@ function tabState(panes: PaneView[]): "busy" | "attention" | "done" | "exited" |
 /** The window's top row: tabs as pills, sitting in the transparent title bar. */
 export default function TabBar({ workspace, index, onTabMenu }: Props) {
   const tabs = workspace.tabs ?? []
+  const { panel } = useUI()
   return (
     <div className={styles.bar}>
       <div className={styles.tabs}>
@@ -69,6 +70,24 @@ export default function TabBar({ workspace, index, onTabMenu }: Props) {
         </button>
         <button className={styles.action} title="Find" onClick={() => openModal({ kind: "finder" })}>
           <LineIcon name="search" />
+        </button>
+        <button
+          className={styles.panelButton}
+          data-active={panel === "files" || undefined}
+          title="Browse files"
+          onClick={() => togglePanel("files")}
+        >
+          <LineIcon name="file" />
+          <span>Files</span>
+        </button>
+        <button
+          className={styles.panelButton}
+          data-active={panel === "changes" || undefined}
+          title="Review uncommitted changes"
+          onClick={() => togglePanel("changes")}
+        >
+          <LineIcon name="branch" />
+          <span>Changes</span>
         </button>
       </div>
     </div>

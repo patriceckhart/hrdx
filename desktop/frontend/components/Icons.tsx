@@ -39,7 +39,13 @@ export function WorkspaceIcon({ name, size = 22 }: { name: string; size?: number
 }
 
 /** Line icons sharing one stroke style, so chrome buttons match. */
-export function LineIcon({ name, size = 15 }: { name: "plus" | "search" | "close" | "settings" | "sidebar" | "chevron"; size?: number }) {
+export function LineIcon({
+  name,
+  size = 15,
+}: {
+  name: "plus" | "search" | "close" | "settings" | "sidebar" | "chevron" | "file" | "folder" | "branch" | "back"
+  size?: number
+}) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       {name === "plus" ? <path d="M12 5v14M5 12h14" /> : null}
@@ -51,6 +57,21 @@ export function LineIcon({ name, size = 15 }: { name: "plus" | "search" | "close
       ) : null}
       {name === "close" ? <path d="M18 6 6 18M6 6l12 12" /> : null}
       {name === "chevron" ? <path d="m6 9 6 6 6-6" /> : null}
+      {name === "back" ? <path d="m15 18-6-6 6-6" /> : null}
+      {name === "file" ? (
+        <>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+        </>
+      ) : null}
+      {name === "folder" ? <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> : null}
+      {name === "branch" ? (
+        <>
+          <circle cx="6" cy="5" r="2" />
+          <circle cx="18" cy="17" r="2" />
+          <path d="M6 7v4a6 6 0 0 0 6 6h4" />
+        </>
+      ) : null}
       {name === "sidebar" ? (
         <>
           <rect x="3" y="4" width="18" height="16" rx="3" />

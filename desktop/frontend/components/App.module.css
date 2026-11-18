@@ -16,6 +16,14 @@
   min-height: 0;
 }
 
+/* Panes and the optional Files or Changes panel side by side. */
+.work {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
 .loading {
   display: grid;
   place-items: center;

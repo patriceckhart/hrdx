@@ -24,14 +24,18 @@ export interface MenuState {
   items: MenuItem[]
 }
 
+/** The read-only side panel next to the panes. */
+export type ReviewPanel = "files" | "changes"
+
 export interface UIState {
   modal: Modal | null
   menu: MenuState | null
   prefix: boolean
   toast: string | null
+  panel: ReviewPanel | null
 }
 
-let state: UIState = { modal: null, menu: null, prefix: false, toast: null }
+let state: UIState = { modal: null, menu: null, prefix: false, toast: null, panel: null }
 const listeners = new Set<() => void>()
 
 function update(patch: Partial<UIState>): void {
@@ -70,6 +74,19 @@ export function openMenu(menu: MenuState): void {
 export function closeMenu(): void {
   if (state.menu) {
     update({ menu: null })
+    refocusTerminal()
+  }
+}
+
+/** Opens a review panel, or closes it when it is already open. */
+export function togglePanel(panel: ReviewPanel): void {
+  update({ panel: state.panel === panel ? null : panel })
+  if (state.panel === null) refocusTerminal()
+}
+
+export function closePanel(): void {
+  if (state.panel) {
+    update({ panel: null })
     refocusTerminal()
   }
 }

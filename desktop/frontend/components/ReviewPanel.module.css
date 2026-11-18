@@ -1,0 +1,324 @@
+/* Read-only Files and Changes panel, a card next to the panes. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: clamp(320px, 38%, 640px);
+  min-height: 0;
+  margin: 0 10px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", "DejaVu Sans Mono", Consolas, monospace;
+  --add: #8ae234;
+  --del: #ef2929;
+  --mod: #fce94f;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  flex: none;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-weight: 600;
+}
+
+.headerInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+  font-size: 12px;
+}
+
+.path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  direction: rtl;
+  text-align: left;
+}
+
+.badge {
+  margin-right: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 10px;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.list,
+.changeList {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.list {
+  flex: 1;
+}
+
+/* The change list takes what it needs, up to 40%, and the diff the rest. */
+.changeList {
+  flex: 0 1 auto;
+  max-height: 40%;
+  border-bottom: 1px solid var(--border);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--surface-2);
+}
+
+.row[data-selected] {
+  background: var(--surface-3);
+}
+
+.chevron {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  flex: none;
+  color: var(--text-3);
+}
+
+.chevron svg {
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+}
+
+.chevron[data-open] svg {
+  transform: none;
+}
+
+.entryIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--text-2);
+}
+
+.name,
+.changePath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name[data-tone="add"] {
+  color: var(--add);
+}
+.name[data-tone="mod"] {
+  color: var(--mod);
+}
+.name[data-tone="del"] {
+  color: var(--del);
+}
+
+.folder {
+  color: var(--text-3);
+}
+
+.mark {
+  width: 14px;
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--mod);
+}
+
+.mark[data-tone="add"] {
+  color: var(--add);
+}
+.mark[data-tone="del"] {
+  color: var(--del);
+}
+
+.add,
+.del {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.add {
+  color: var(--add);
+}
+
+.del {
+  color: var(--del);
+}
+
+.empty,
+.hint {
+  padding: 10px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.hint {
+  font-size: 11px;
+}
+
+.code {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.note {
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.codeInner {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.line {
+  display: flex;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.line[data-kind="add"] {
+  background: color-mix(in srgb, var(--add) 10%, transparent);
+}
+
+.line[data-kind="del"] {
+  background: color-mix(in srgb, var(--del) 10%, transparent);
+}
+
+.number {
+  position: sticky;
+  left: 0;
+  width: 44px;
+  flex: none;
+  padding-right: 10px;
+  background: var(--surface);
+  color: var(--text-3);
+  text-align: right;
+  user-select: none;
+}
+
+/* Sticky numbers need an opaque background that keeps the row's tint. */
+.line[data-kind="add"] .number {
+  background: color-mix(in srgb, var(--add) 10%, var(--surface));
+}
+
+.line[data-kind="del"] .number {
+  background: color-mix(in srgb, var(--del) 10%, var(--surface));
+}
+
+.sign {
+  width: 14px;
+  flex: none;
+  color: var(--text-3);
+  user-select: none;
+}
+
+.line[data-kind="add"] .sign {
+  color: var(--add);
+}
+
+.line[data-kind="del"] .sign {
+  color: var(--del);
+}
+
+.text {
+  padding-right: 16px;
+}
+
+.hunk {
+  min-width: max-content;
+  margin: 4px 0;
+  padding: 0 12px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  white-space: pre;
+}
+
+/* Syntax classes from internal/review, in xterm's ANSI palette. */
+.hl_keyword {
+  color: #ad7fa8;
+}
+.hl_string {
+  color: #8ae234;
+}
+.hl_comment {
+  color: var(--text-3);
+  font-style: italic;
+}
+.hl_number {
+  color: #fcaf3e;
+}
+.hl_type {
+  color: #34e2e2;
+}
+.hl_func {
+  color: #729fcf;
+}
+.hl_punct {
+  color: var(--text-2);
+}
