@@ -52,7 +52,11 @@ export function cssVariables(colors: Record<string, string>): Record<string, str
   return out
 }
 
-/** Pane card background; terminals blend into it. Keep in sync with --surface. */
+/**
+ * Pane card background; terminals blend into it. Keep in sync with --surface
+ * and with vt.DefaultPalette (internal/vt/color.go), which answers programs'
+ * color queries with this background and the foreground below.
+ */
 export const SURFACE = "#18181b"
 
 /** xterm.js theme. ANSI colors keep xterm defaults; chrome roles tint it. */

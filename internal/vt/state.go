@@ -378,6 +378,8 @@ func (t *State) defaultCursor() Cursor {
 
 func (t *State) reset() {
 	t.cur = t.defaultCursor()
+	// RIS restores the colors as well, like xterm.
+	clear(t.colorOverride)
 	t.saveCursor()
 	for i := range t.tabs {
 		t.tabs[i] = false

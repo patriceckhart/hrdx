@@ -32,6 +32,7 @@ import (
 	"github.com/patriceckhart/hrdx/internal/paths"
 	"github.com/patriceckhart/hrdx/internal/sound"
 	"github.com/patriceckhart/hrdx/internal/state"
+	"github.com/patriceckhart/hrdx/internal/vt"
 )
 
 //go:embed all:frontend/out
@@ -177,6 +178,10 @@ func loadState(flags startup.Options) (state.State, []string) {
 
 func run(flags startup.Options) error {
 	startup.ApplyLoginPath(flags.Shell)
+	// Panes answer color queries with the colors xterm.js draws: its default
+	// ANSI palette on the pane surface (frontend/lib/theme.ts). Programs such
+	// as GitHub Copilot CLI build their color scheme from those answers.
+	vt.SetReportPalette(vt.DefaultPalette)
 	desktopPrefs := prefs.Load(prefs.Path(flags.StatePath))
 
 	sockets := paths.Legacy(flags.StatePath)

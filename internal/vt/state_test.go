@@ -198,3 +198,110 @@ func TestCombiningMarkDoesNotAdvanceCursor(t *testing.T) {
 		t.Fatalf("cell after combining mark = %q, want x", got)
 	}
 }
+
+// GitHub Copilot CLI derives its colors from OSC 10, 11, and 4 answers.
+// They used to echo hrdx's internal color codes (black foreground, palette
+// entries as tiny blue values), so dimmed text vanished on a dark screen.
+func TestColorQueriesReportDisplayedColors(t *testing.T) {
+	SetReportPalette(DefaultPalette)
+	t.Cleanup(func() { SetReportPalette(DefaultPalette) })
+
+	cases := []struct{ query, want string }{
+		{"\x1b]10;?\x07", "\x1b]10;rgb:e4e4/e4e4/e7e7\a"},
+		{"\x1b]11;?\x1b\\", "\x1b]11;rgb:1818/1818/1b1b\a"},
+		{"\x1b]4;1;?\x07", "\x1b]4;1;rgb:cccc/0000/0000\a"},
+		{"\x1b]4;15;?\x07", "\x1b]4;15;rgb:eeee/eeee/ecec\a"},
+		{"\x1b]4;16;?\x07", "\x1b]4;16;rgb:0000/0000/0000\a"},
+		{"\x1b]4;200;?\x07", "\x1b]4;200;rgb:ffff/0000/d7d7\a"}, // cube 5,0,4
+		{"\x1b]4;244;?\x07", "\x1b]4;244;rgb:8080/8080/8080\a"}, // gray ramp
+		{"\x1b]4;300;?\x07", ""},                                // out of range
+	}
+	for _, tc := range cases {
+		var response bytes.Buffer
+		terminal := New(WithWriter(&response))
+		if _, err := terminal.Write([]byte(tc.query)); err != nil {
+			t.Fatal(err)
+		}
+		if got := response.String(); got != tc.want {
+			t.Errorf("%q answered %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}
+
+func TestColorQueriesUseFrontendPalette(t *testing.T) {
+	custom := DefaultPalette
+	custom.FG, custom.BG, custom.ANSI[2] = 0x112233, 0xfafafa, 0x00ff00
+	SetReportPalette(custom)
+	t.Cleanup(func() { SetReportPalette(DefaultPalette) })
+
+	var response bytes.Buffer
+	terminal := New(WithWriter(&response))
+	if _, err := terminal.Write([]byte("\x1b]10;?\x07\x1b]11;?\x07\x1b]4;2;?\x07")); err != nil {
+		t.Fatal(err)
+	}
+	want := "\x1b]10;rgb:1111/2222/3333\a\x1b]11;rgb:fafa/fafa/fafa\a\x1b]4;2;rgb:0000/ffff/0000\a"
+	if got := response.String(); got != want {
+		t.Fatalf("answers = %q, want %q", got, want)
+	}
+}
+
+// A color the program set itself is what it reads back.
+func TestColorQueriesReportProgramOverrides(t *testing.T) {
+	var response bytes.Buffer
+	terminal := New(WithWriter(&response))
+	if _, err := terminal.Write([]byte("\x1b]11;rgb:01/02/03\x07\x1b]4;3;#a0b0c0\x07\x1b]11;?\x07\x1b]4;3;?\x07")); err != nil {
+		t.Fatal(err)
+	}
+	want := "\x1b]11;rgb:0101/0202/0303\a\x1b]4;3;rgb:a0a0/b0b0/c0c0\a"
+	if got := response.String(); got != want {
+		t.Fatalf("answers = %q, want %q", got, want)
+	}
+}
+
+// Copilot sets the background with OSC 11 while it runs and resets it with
+// OSC 111 on exit. The override used to outlive it, so the shell after
+// Copilot drew on Copilot's black instead of the terminal background.
+func TestColorResetsDropProgramOverrides(t *testing.T) {
+	cases := []struct {
+		name, set, reset string
+		color            Color
+	}{
+		{"OSC 110 foreground", "\x1b]10;#010203\x07", "\x1b]110\x07", DefaultFG},
+		{"OSC 111 background", "\x1b]11;#0d1117\x07", "\x1b]111\x1b\\", DefaultBG},
+		{"OSC 104 one entry", "\x1b]4;1;#010203\x07", "\x1b]104;1\x07", Color(1)},
+		{"OSC 104 whole palette", "\x1b]4;200;#010203\x07", "\x1b]104\x07", Color(200)},
+		{"RIS", "\x1b]11;#0d1117\x07", "\x1bc", DefaultBG},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			emulator := New(WithSize(4, 2))
+			if _, err := emulator.Write([]byte(tc.set)); err != nil {
+				t.Fatal(err)
+			}
+			state := emulator.(*terminal).State
+			if _, ok := state.colorOverride[tc.color]; !ok {
+				t.Fatal("override was not set")
+			}
+			if _, err := emulator.Write([]byte(tc.reset)); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := state.colorOverride[tc.color]; ok {
+				t.Fatalf("%q kept the override", tc.reset)
+			}
+		})
+	}
+}
+
+// After a background reset, cells render with the default background again,
+// which the host draws in its own color.
+func TestBackgroundResetRendersDefault(t *testing.T) {
+	terminal := New(WithSize(4, 2))
+	if _, err := terminal.Write([]byte("\x1b]11;#0d1117\x07\x1b]111\x07X")); err != nil {
+		t.Fatal(err)
+	}
+	terminal.Lock()
+	defer terminal.Unlock()
+	if got := terminal.Cell(0, 0).BG; got != DefaultBG {
+		t.Fatalf("background = %x, want the default", got)
+	}
+}

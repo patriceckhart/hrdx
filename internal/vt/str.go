@@ -124,7 +124,12 @@ func (t *State) handleSTR() {
 			if len(s.args) > 1 {
 				j = s.arg(1, 0)
 			}
-			if p != nil && *p == "?" { // report
+			if d == 104 && len(s.args) <= 1 {
+				// OSC 104 without an index resets the whole palette.
+				for index := range Color(256) {
+					delete(t.colorOverride, index)
+				}
+			} else if p != nil && *p == "?" { // report
 				t.osc4ColorResponse(j)
 			} else if err := t.setColorName(j, p); err != nil {
 				if !(d == 104 && len(s.args) <= 1) {
@@ -133,6 +138,10 @@ func (t *State) handleSTR() {
 			} else {
 				// TODO: redraw
 			}
+		case 110, 111, 112: // reset foreground, background, cursor color
+			// Programs such as GitHub Copilot CLI set OSC 11 while running and
+			// reset it on exit. Without this the override outlived them.
+			delete(t.colorOverride, [...]Color{DefaultFG, DefaultBG, DefaultCursor}[d-110])
 		case 7501:
 			t.handleProgramStatus(s.args[1:])
 		default:
@@ -191,7 +200,8 @@ func (t *State) handleProgramStatus(args []string) {
 }
 
 func (t *State) setColorName(j int, p *string) error {
-	if !between(j, 0, 1<<24) {
+	// Palette indexes plus the default colors, which OSC 10, 11, and 12 set.
+	if !between(j, 0, 255) && j != int(DefaultFG) && j != int(DefaultBG) && j != int(DefaultCursor) {
 		return fmt.Errorf("invalid color value %d", j)
 	}
 
@@ -216,13 +226,18 @@ func (t *State) oscColorResponse(j, num int) {
 		return
 	}
 
-	k, ok := t.colorOverride[Color(j)]
-	if ok {
-		j = int(k)
-	}
-
-	r, g, b := rgb(j)
+	r, g, b := rgb(int(t.reportedRGB(Color(j))))
 	t.w.Write([]byte(fmt.Sprintf("\033]%d;rgb:%02x%02x/%02x%02x/%02x%02x\007", num, r, r, g, g, b, b)))
+}
+
+// reportedRGB is the color a query for c answers: a color the program set
+// itself with OSC 4, 10, or 11 when there is one, otherwise the color the
+// frontend displays. Overrides already hold RGB values, never indexes.
+func (t *State) reportedRGB(c Color) RGB {
+	if override, ok := t.colorOverride[c]; ok {
+		return RGB(override & 0xffffff)
+	}
+	return rgbOf(c, ReportPalette())
 }
 
 func (t *State) osc4ColorResponse(j int) {
@@ -231,12 +246,11 @@ func (t *State) osc4ColorResponse(j int) {
 		return
 	}
 
-	k, ok := t.colorOverride[Color(j)]
-	if ok {
-		j = int(k)
+	if j > 255 {
+		t.logf("osc4 color %d out of range\n", j)
+		return
 	}
-
-	r, g, b := rgb(j)
+	r, g, b := rgb(int(t.reportedRGB(Color(j))))
 	t.w.Write([]byte(fmt.Sprintf("\033]4;%d;rgb:%02x%02x/%02x%02x/%02x%02x\007", j, r, r, g, g, b, b)))
 }
 

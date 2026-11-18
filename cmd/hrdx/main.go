@@ -18,6 +18,7 @@ import (
 	"github.com/patriceckhart/hrdx/internal/state"
 	"github.com/patriceckhart/hrdx/internal/ui"
 	"github.com/patriceckhart/hrdx/internal/update"
+	"github.com/patriceckhart/hrdx/internal/vt"
 )
 
 // Injected at build time via -ldflags "-X main.version=...". See
@@ -242,6 +243,10 @@ func main() {
 	// wake triggers a full repaint (see FocusMsg in the update loop).
 	// The cursor sink keeps the hardware cursor at the focused input point
 	// so IME and dead-key composition previews appear where the user types.
+	// Panes answer color queries (OSC 4, 10, 11) with the host terminal's
+	// real colors, as programs such as GitHub Copilot CLI build their color
+	// scheme from them. Ask before Bubble Tea takes over stdin.
+	vt.SetReportPalette(queryHostPalette())
 	cursorSink := ui.NewCursorSink()
 	modelUI.SetCursorSink(cursorSink)
 	options := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(),
