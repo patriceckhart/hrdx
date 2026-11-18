@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -65,7 +66,13 @@ func TestResolveRefusesEscapes(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
-	for _, rel := range []string{"../x", "a/../../x", "/etc/passwd", "link/secret", "link"} {
+	escapes := []string{"../x", "a/../../x", "/etc/passwd", `\Windows\win.ini`, "link/secret", "link"}
+	if runtime.GOOS == "windows" {
+		// A drive letter is only special on Windows. Elsewhere C:\x is a
+		// legal file name.
+		escapes = append(escapes, `C:\x`, `C:x`)
+	}
+	for _, rel := range escapes {
 		if _, err := Resolve(root, rel); err == nil {
 			t.Errorf("%q resolved", rel)
 		}

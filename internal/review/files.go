@@ -36,7 +36,13 @@ func Resolve(root, rel string) (string, error) {
 	if root == "" {
 		return "", errors.New("no folder")
 	}
-	rel = filepath.FromSlash(strings.TrimSpace(rel))
+	rel = strings.TrimSpace(rel)
+	// A leading slash or backslash is absolute on Unix and rooted on the
+	// current drive on Windows. Neither names a path below root.
+	if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "\\") {
+		return "", ErrOutside
+	}
+	rel = filepath.FromSlash(rel)
 	if filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" {
 		return "", ErrOutside
 	}
