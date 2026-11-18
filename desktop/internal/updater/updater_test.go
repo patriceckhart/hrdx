@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -164,5 +165,35 @@ func TestRelaunchCommandPassesTargetAsArgument(t *testing.T) {
 		if strings.Contains(strings.Join(args[:len(args)-2], " "), target) {
 			t.Fatalf("%s: target interpolated into script", goos)
 		}
+	}
+}
+
+// A release is published before its desktop builds finish uploading.
+// Offering it then made "Update now" fail with a 404 on the checksums.
+func TestAssetsReadyNeedsThisPlatformsFiles(t *testing.T) {
+	info := Info{Latest: "0.0.62", URL: "https://github.com/patriceckhart/hrdx/releases/tag/v0.0.62", Available: true}
+	base := "https://github.com/patriceckhart/hrdx/releases/download/v0.0.62/"
+	uploaded := map[string]bool{
+		base + "desktop-checksums-linux.txt":             true,
+		base + "hrdx-desktop_0.0.62_linux_amd64.tar.gz":  true,
+		base + "hrdx-desktop_0.0.62_macos_universal.dmg": true, // dmg without checksums yet
+		base + "desktop-checksums-windows.txt":           true,
+		base + "hrdx-desktop_0.0.62_windows_amd64.zip":   false,
+	}
+	original := assetHead
+	assetHead = func(_ context.Context, url string) bool { return uploaded[url] }
+	t.Cleanup(func() { assetHead = original })
+
+	if !assetsReady(t.Context(), info, "linux") {
+		t.Fatal("linux files are uploaded")
+	}
+	if assetsReady(t.Context(), info, "darwin") {
+		t.Fatal("macOS checksums are missing")
+	}
+	if assetsReady(t.Context(), info, "windows") {
+		t.Fatal("windows archive is missing")
+	}
+	if assetsReady(t.Context(), Info{Latest: "0.0.62"}, "linux") {
+		t.Fatal("no release URL means nothing to download")
 	}
 }

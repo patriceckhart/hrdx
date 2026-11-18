@@ -12,12 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/patriceckhart/hrdx/internal/update"
 )
@@ -67,7 +69,39 @@ func Check(ctx context.Context, cacheDir, version string) Info {
 		return Info{}
 	}
 	got := update.Check(ctx, cacheDir, version)
-	return Info{Current: got.Current, Latest: got.Latest, Available: got.Available, URL: got.URL}
+	info := Info{Current: got.Current, Latest: got.Latest, Available: got.Available, URL: got.URL}
+	// A release is published as soon as the CLI builds are up, while the
+	// desktop builds may still be running. Offer it only once this
+	// platform's files exist, so "Update now" cannot hit a 404.
+	if info.Available && !assetsReady(ctx, info, runtime.GOOS) {
+		info.Available = false
+	}
+	return info
+}
+
+// assetHead checks that a release file exists. Tests replace it.
+var assetHead = func(ctx context.Context, url string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// assetsReady reports whether the archive and checksums for goos are
+// uploaded to info's release.
+func assetsReady(ctx context.Context, info Info, goos string) bool {
+	asset, err := AssetFor(info.Latest, goos)
+	if err != nil || info.URL == "" {
+		return false
+	}
+	base := update.DownloadBase(info.URL)
+	return assetHead(ctx, base+"/"+asset.Checksums) && assetHead(ctx, base+"/"+asset.Archive)
 }
 
 // Install downloads, verifies, and installs info.Latest over the running
