@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 
 	"github.com/patriceckhart/hrdx/internal/review"
 )
@@ -63,6 +65,32 @@ func (c *Core) ReviewPreview(rel string) review.Preview {
 		return review.Preview{Note: err.Error()}
 	}
 	return review.ReadPreview(dir, rel)
+}
+
+// ReviewFilePath resolves rel below the panel folder to an absolute path of
+// an existing regular file, for opening it in the system's default app.
+// Paths outside the folder, folders, and missing files are refused, so the
+// webview can only open what the Files panel can show.
+func (c *Core) ReviewFilePath(rel string) (string, error) {
+	dir, err := c.ReviewDir()
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(rel) == "" {
+		return "", errors.New("no file")
+	}
+	path, err := review.Resolve(dir, rel)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", errors.New("file not found")
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("not a file")
+	}
+	return path, nil
 }
 
 // ReviewChanges lists the uncommitted changes of the panel folder's

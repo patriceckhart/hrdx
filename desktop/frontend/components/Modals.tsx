@@ -107,6 +107,7 @@ function WorkspacePrompt() {
   const view = useView()
   const [path, setPath] = useState("")
   const [agent, setAgent] = useState(view?.default_agent ?? "zot")
+  const [args, setArgs] = useState("")
   const [completions, setCompletions] = useState<string[]>([])
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
@@ -128,7 +129,9 @@ function WorkspacePrompt() {
     setBusy(true)
     setError("")
     try {
-      await bridge.workspaceCreate(value.trim(), agent)
+      // Shells take no agent arguments.
+      if (agent !== "shell" && args.trim()) await bridge.workspaceCreateWithArgs(value.trim(), agent, args)
+      else await bridge.workspaceCreate(value.trim(), agent)
       closeModal()
     } catch (failure) {
       setError(errorMessage(failure))
@@ -151,7 +154,8 @@ function WorkspacePrompt() {
       title="New workspace"
       wide
       onKeyDown={(event) => {
-        if (event.key === "Tab" && completions.length > 0) {
+        // Tab completes directories only while typing the directory.
+        if (event.key === "Tab" && completions.length > 0 && event.target === input.current) {
           event.preventDefault()
           const next = completions.length === 1 ? completions[0]! : commonPrefix(completions)
           setPath(completions.length === 1 ? `${next}/` : next.length > path.length ? next : completions[0]!)
@@ -190,6 +194,20 @@ function WorkspacePrompt() {
           ))}
         </select>
       </label>
+      {agent !== "shell" ? (
+        <label className={styles.field}>
+          Arguments
+          <input
+            className={styles.input}
+            placeholder="optional, e.g. --codemode"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            value={args}
+            onChange={(event) => setArgs(event.target.value)}
+          />
+        </label>
+      ) : null}
       {error ? <div className={styles.error}>{error}</div> : null}
       <div className={styles.actions}>
         <button className={styles.button} onClick={closeModal}>

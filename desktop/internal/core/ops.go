@@ -410,6 +410,12 @@ func (m *model) cycleAgent() {
 // createWorkspace opens path as a workspace with a first pane of kind. It
 // mirrors the API's workspace.create validation.
 func (m *model) createWorkspace(path, kind string, groupPath []string, groupFromGit bool) (*space, error) {
+	return m.createWorkspaceArgs(path, kind, groupPath, groupFromGit, nil)
+}
+
+// createWorkspaceArgs is createWorkspace with extra arguments for the first
+// pane's agent. Shell panes ignore them.
+func (m *model) createWorkspaceArgs(path, kind string, groupPath []string, groupFromGit bool, args []string) (*space, error) {
 	if m.blocked != "" {
 		return nil, apiError{api.CodeError, m.blocked}
 	}
@@ -435,8 +441,11 @@ func (m *model) createWorkspace(path, kind string, groupPath []string, groupFrom
 		created.groupPath = gitGroupPath(resolved)
 	}
 	m.selected = len(m.spaces) - 1
-	m.persist()
 	first := created.tab().panes[0]
+	if agent.IsAgent(first.kind) {
+		first.args = append([]string(nil), args...)
+	}
+	m.persist()
 	m.publish(api.Event{Event: api.EventWorkspaceCreated,
 		Data: api.WorkspaceEvent{Workspace: created.name, Path: created.cwd, GroupPath: append([]string(nil), created.groupPath...)}})
 	m.publish(api.Event{Event: api.EventPaneCreated,

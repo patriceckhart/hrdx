@@ -71,6 +71,9 @@ export const bridge = {
 
   workspaceCreate: (path: string, agent: string, groupPath: string[] = []) =>
     call<void>("WorkspaceCreate", path, agent, groupPath),
+  /** args is one line of extra agent arguments, split like shell words. */
+  workspaceCreateWithArgs: (path: string, agent: string, args: string, groupPath: string[] = []) =>
+    call<void>("WorkspaceCreateWithArgs", path, agent, groupPath, args),
   workspacePickDirectory: () => call<string>("WorkspacePickDirectory"),
   workspaceSelect: (index: number) => call<void>("WorkspaceSelect", index),
   workspaceClose: (index: number) => call<void>("WorkspaceClose", index),
@@ -85,6 +88,8 @@ export const bridge = {
   reviewPreview: (rel: string) => call<FilePreview>("ReviewPreview", rel),
   reviewChanges: () => call<ChangesResult>("ReviewChanges"),
   reviewDiff: (path: string) => call<DiffResult>("ReviewDiff", path),
+  /** Opens a Files panel file in the system's default app. */
+  reviewOpen: (rel: string) => call<void>("ReviewOpen", rel),
   subrepoUnhide: (workspace: number) => call<void>("SubrepoUnhide", workspace),
   workspaceSetFolded: (index: number, folded: boolean) => call<void>("WorkspaceSetFolded", index, folded),
   workspaceRename: (index: number, name: string) => call<void>("WorkspaceRename", index, name),

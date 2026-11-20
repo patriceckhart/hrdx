@@ -121,7 +121,8 @@ func (m *model) restore(saved state.State) {
 				restoredPane := &pane{
 					id: m.nextID, name: savedPane.Name, kind: kind,
 					resume: agent.IsAgent(kind), session: savedPane.Session,
-					cwd: restoredPaneDir(savedPane.CWD),
+					cwd:  restoredPaneDir(savedPane.CWD),
+					args: append([]string(nil), savedPane.Args...),
 				}
 				if savedPane.Durable != nil {
 					ref := *savedPane.Durable
@@ -194,7 +195,8 @@ func (m *model) snapshot() state.State {
 					savedTab.Selected = len(savedTab.Panes)
 				}
 				savedPane := state.Pane{Kind: currentPane.kind, Name: currentPane.name,
-					Session: currentPane.session, CWD: currentPane.cwd}
+					Session: currentPane.session, CWD: currentPane.cwd,
+					Args: append([]string(nil), currentPane.args...)}
 				if currentPane.durable != nil {
 					ref := *currentPane.durable
 					savedPane.Durable = &ref

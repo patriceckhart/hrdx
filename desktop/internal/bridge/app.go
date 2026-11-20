@@ -25,6 +25,8 @@ type Platform interface {
 	ClipboardWrite(text string) error
 	ClipboardRead() (string, error)
 	OpenURL(url string)
+	// OpenFile opens a local file in the system's default application.
+	OpenFile(path string) error
 	Quit()
 	// AttentionSupported reports whether RequestAttention does anything.
 	AttentionSupported() bool
@@ -73,6 +75,12 @@ func (a *App) WorkspaceCreate(path, agent string, groupPath []string) error {
 	return a.core.WorkspaceCreate(path, agent, groupPath)
 }
 
+// WorkspaceCreateWithArgs opens a directory as a workspace and passes extra
+// arguments, written like shell words, to the first pane's agent.
+func (a *App) WorkspaceCreateWithArgs(path, agent string, groupPath []string, args string) error {
+	return a.core.WorkspaceCreateWithArgs(path, agent, groupPath, args)
+}
+
 // WorkspacePickDirectory opens the native directory dialog.
 func (a *App) WorkspacePickDirectory() (string, error) {
 	if a.platform == nil {
@@ -108,6 +116,19 @@ func (a *App) ReviewList(rel string) core.FolderListing { return a.core.ReviewLi
 
 // ReviewPreview returns a highlighted read-only file preview.
 func (a *App) ReviewPreview(rel string) review.Preview { return a.core.ReviewPreview(rel) }
+
+// ReviewOpen opens a file of the Files panel in the system's default app.
+// rel is relative to the panel folder; the core refuses anything outside it.
+func (a *App) ReviewOpen(rel string) error {
+	path, err := a.core.ReviewFilePath(rel)
+	if err != nil {
+		return err
+	}
+	if a.platform == nil {
+		return nil
+	}
+	return a.platform.OpenFile(path)
+}
 
 // ReviewChanges lists the uncommitted changes for the Changes panel.
 func (a *App) ReviewChanges() review.Changes { return a.core.ReviewChanges() }

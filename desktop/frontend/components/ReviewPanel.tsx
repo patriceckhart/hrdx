@@ -5,15 +5,18 @@
 // writes to disk or to git.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { bridge } from "@/lib/bridge"
+import { bridge, errorMessage } from "@/lib/bridge"
 import { useView } from "@/lib/store"
 import type { ChangedFile, ChangesResult, DiffResult, FilePreview, FolderListing, Span } from "@/lib/types"
-import { closePanel, type ReviewPanel as Panel } from "@/lib/ui"
+import { closePanel, toast, type ReviewPanel as Panel } from "@/lib/ui"
 import { LineIcon } from "./Icons"
 import styles from "./ReviewPanel.module.css"
 
 /** Refresh interval while a panel is open, in milliseconds. */
 const REFRESH_MS = 5000
+
+/** How long a file click waits for a second click before previewing. */
+const DOUBLE_CLICK_MS = 220
 
 /** Renders highlighted spans; classes map to theme colors in the CSS. */
 export function Code({ spans }: { spans: Span[] | null | undefined }): ReactNode {
@@ -83,9 +86,17 @@ function CodeView({ children, note }: { children: ReactNode; note?: string }) {
   return (
     <div className={styles.code}>
       {note ? <div className={styles.note}>{note}</div> : null}
-      <div className={styles.codeInner}>{children}</div>
+      {/* data-selectable: text here can be selected and copied with cmd+c. */}
+      <div className={styles.codeInner} data-selectable>
+        {children}
+      </div>
     </div>
   )
+}
+
+/** Opens a Files panel file in the system's default app. */
+function openInDefaultApp(path: string): void {
+  void bridge.reviewOpen(path).catch((error: unknown) => toast(errorMessage(error)))
 }
 
 function FilesPanel() {
@@ -97,6 +108,8 @@ function FilesPanel() {
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const openRef = useRef(open)
   openRef.current = open
+  const pendingClick = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(pendingClick.current), [])
 
   // A new folder starts closed and on the tree.
   useEffect(() => {
@@ -142,6 +155,21 @@ function FilesPanel() {
       .catch((error: unknown) => setPreview({ lines: null, note: String(error) }))
   }
 
+  // A single click previews, a double click opens in the default app. The
+  // preview replaces the tree, so it waits a moment for a second click.
+  const clickFile = (path: string, clicks: number) => {
+    if (pendingClick.current) clearTimeout(pendingClick.current)
+    pendingClick.current = undefined
+    if (clicks >= 2) {
+      openInDefaultApp(path)
+      return
+    }
+    pendingClick.current = setTimeout(() => {
+      pendingClick.current = undefined
+      show(path)
+    }, DOUBLE_CLICK_MS)
+  }
+
   if (file) {
     return (
       <>
@@ -149,6 +177,9 @@ function FilesPanel() {
           <span className={styles.path} title={file}>
             {file}
           </span>
+          <button className={styles.textButton} title="Open in the default app" onClick={() => openInDefaultApp(file)}>
+            Open
+          </button>
         </Header>
         {preview ? (
           <CodeView note={preview.note}>
@@ -180,8 +211,8 @@ function FilesPanel() {
           key={path}
           className={styles.row}
           style={{ paddingLeft: 8 + depth * 16 }}
-          onClick={() => (entry.dir ? toggle(path) : show(path))}
-          title={path}
+          onClick={(event) => (entry.dir ? toggle(path) : clickFile(path, event.detail))}
+          title={entry.dir ? path : `${path}\nDouble-click to open in the default app`}
         >
           <span className={styles.chevron} data-open={expanded || undefined}>
             {entry.dir ? <LineIcon name="chevron" size={12} /> : null}

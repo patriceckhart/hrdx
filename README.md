@@ -87,7 +87,7 @@ All keys go to the focused terminal, except the `ctrl+b` prefix (tmux style):
 | `a` or `A` | Split in the default / other direction with the default agent directly |
 | `s` or `S` | Split with a new shell pane directly (default / other direction); `%` and `\|` always split right, `\"` and `-` always below |
 | `v` | Cycle the default split direction: right, below, auto |
-| `w` | New workspace (directory prompt with tab completion, then agent/shell picker) |
+| `w` | New workspace (directory prompt with tab completion, then agent/shell picker, then optional agent arguments, see [Agent arguments](#agent-arguments)) |
 | `t` | New tab in the current workspace (opens the agent/shell picker) |
 | `n` or `p` | Next / previous tab |
 | `<` or `>` | Move the current tab one place left / right |
@@ -159,7 +159,7 @@ Two read-only panels dock right of the panes, like herdr's. They follow the focu
 - **Files** (`ctrl+b e`) is a folder tree. Folders open lazily, `.git` is hidden, and each folder lists at most 500 entries. Files and folders with uncommitted changes are colored and marked `M`, `A`, `D`, or `U`. Opening a file shows a syntax-highlighted preview with line numbers (up to 512 KiB and 5,000 lines; binary files show a note).
 - **Changes** (`ctrl+b g`) lists the repository's uncommitted changes against `HEAD`, untracked files included, with each file's added and deleted line counts and the totals. Opening a file shows its highlighted diff with line numbers. Git runs with `--no-optional-locks` and without index refreshes, so the panel never touches the index or takes a lock.
 
-In the TUI, opening a panel moves the keyboard into it: arrows or `j`/`k` move, `enter` or `l` opens a folder or file, `h` or `left` goes back up, `tab` switches between the panels, `esc` steps back from a preview or diff and then closes the panel, and the prefix key still works. Clicking a row opens it, the wheel scrolls, `x` in the header closes, and clicking a pane returns the keyboard to it. The panes shrink while a panel is open and their PTYs resize accordingly. In the desktop app, **Files** and **Changes** buttons sit at the right of the tab bar.
+In the TUI, opening a panel moves the keyboard into it: arrows or `j`/`k` move, `enter` or `l` opens a folder or file, `h` or `left` goes back up, `tab` switches between the panels, `esc` steps back from a preview or diff and then closes the panel, and the prefix key still works. Clicking a row opens it, the wheel scrolls, `x` in the header closes, and clicking a pane returns the keyboard to it. The panes shrink while a panel is open and their PTYs resize accordingly. In the desktop app, **Files** and **Changes** buttons sit at the right of the tab bar. There, the text of a preview or diff can be selected with the mouse and copied with `cmd+c` (`ctrl+shift+c` on Linux and Windows), and double-clicking a file in the tree, or the **Open** button above its preview, opens it in the system's default app. Only files inside the panel's folder can be opened.
 
 ## Remote and container panes
 
@@ -206,6 +206,12 @@ To make remote and container agents appear in pickers, agent cycling, settings, 
 Wrapper scripts are useful when the host, container, namespace, pod, working directory, or authentication setup is dynamic. Set the harness `binary` to the wrapper path and put any fixed parameters in `args`.
 
 The session holder keeps the local SSH, Docker, or Kubernetes client process alive when hrdx restarts. It cannot keep an agent alive when its remote host, container, pod, or network connection ends, and it does not automatically reconnect. Workspace Git details are read from the local workspace path, not from the remote filesystem.
+
+## Agent arguments
+
+A new workspace can start its agent with extra arguments, for example `--codemode`. After you pick an agent in the new workspace flow, the footer asks for arguments: type them and press `enter`, press `enter` on the empty line to start without any, or `esc` to cancel the workspace. The desktop app has an **Arguments** field in the New workspace dialog. Shell panes take no arguments and start right away.
+
+Arguments are split like shell words: spaces separate, single and double quotes group (`--prompt "fix the bug"`), and a backslash escapes the next character. No shell runs, so `$HOME`, `~`, and `*` are passed as written. They are added after the agent's own arguments and the `--provider`, `--model`, and `--reasoning` flags, on every launch of that pane, including a restart or a resume after hrdx restarts. They are saved with the pane in the state file as an optional `args` list, so treat that file as you would shell history. Other panes, new tabs, and splits start their agents without them.
 
 ## Custom harnesses
 
@@ -539,7 +545,7 @@ make build          # build/bin/hrdx.app on macOS, build/bin/hrdx-desktop elsewh
 make check          # go vet, go test -race, frontend typecheck, lint, tests, and build
 ```
 
-`hrdx-desktop` accepts `--cwd` (repeatable), `--agent`, `--provider`, `--model`, `--reasoning`, `--continue`, `--zot-bin`, `--pi-bin`, `--claude-bin`, `--codex-bin`, `--shell`, `--state`, `--fresh`, `--api`, `--persist`, and `--version`, with the same meanings and defaults as `hrdx`. Without `--cwd` and saved workspaces it opens empty with a New workspace prompt. On macOS it reads `PATH` from your login shell once at startup, so agents installed through Homebrew or `~/.local/bin` resolve as they do in a terminal.
+`hrdx-desktop` accepts `--cwd` (repeatable), `--agent`, `--provider`, `--model`, `--reasoning`, `--continue`, `--zot-bin`, `--pi-bin`, `--claude-bin`, `--codex-bin`, `--shell`, `--state`, `--fresh`, `--api`, `--persist`, and `--version`, with the same meanings and defaults as `hrdx`. Without `--cwd` and saved workspaces it opens empty with a New workspace prompt. That dialog has an Arguments field for the first pane's agent (see [Agent arguments](#agent-arguments)). On macOS it reads `PATH` from your login shell once at startup, so agents installed through Homebrew or `~/.local/bin` resolve as they do in a terminal.
 
 Keys follow the TUI: the prefix (`ctrl+b`, remappable in `keys.json`) and every prefix action work, including `tab` and `shift+tab` repeats until `esc`. Native shortcuts are layered on top: `cmd+q` quit, `cmd+,` settings, `cmd+w` close pane, `cmd+t` new tab, `cmd+k` find, `cmd+c` and `cmd+v` copy and paste (`ctrl+shift+` on Linux and Windows, so plain control keys stay terminal input). Escape and control keys are never reserved. Right-click opens the same scoped context menus, with `menu.register` entries appended. Dividers drag, and a double-click resets one to an even split.
 

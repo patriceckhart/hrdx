@@ -45,7 +45,8 @@ function nativeShortcut(event: KeyboardEvent): boolean {
       openModal({ kind: "finder" })
       return true
     case "c": {
-      const text = focusedTerminal()?.copySelection()
+      // Text selected in the Files or Changes panel wins over the terminal.
+      const text = selectedPanelText() || focusedTerminal()?.copySelection()
       if (text) {
         void bridge
           .clipboardWrite(text)
@@ -64,6 +65,15 @@ function nativeShortcut(event: KeyboardEvent): boolean {
       return true
   }
   return false
+}
+
+/** The text selected inside a review panel's code view, if any. */
+export function selectedPanelText(): string {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed) return ""
+  const anchor = selection.anchorNode
+  const element = anchor instanceof Element ? anchor : anchor?.parentElement
+  return element?.closest("[data-selectable]") ? selection.toString() : ""
 }
 
 /**

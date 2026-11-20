@@ -99,3 +99,23 @@ func TestReviewWithoutWorkspace(t *testing.T) {
 		t.Fatal("listing without a workspace")
 	}
 }
+
+// Double-click in the Files panel opens a file in the default app. Only
+// regular files inside the panel folder resolve.
+func TestReviewFilePathStaysInsideThePanelFolder(t *testing.T) {
+	root := gitRepo(t)
+	saved := state.State{Workspaces: []state.Workspace{{Name: "w", CWD: root, Tabs: []state.Tab{{
+		Panes: []state.Pane{{Kind: "shell", Name: "s", CWD: filepath.Join(root, "app")}},
+	}}}}}
+	h := newHarness(t, saved)
+
+	got, err := h.core.ReviewFilePath("main.go")
+	if err != nil || got != filepath.Join(root, "app", "main.go") {
+		t.Fatalf("path = %q %v", got, err)
+	}
+	for _, bad := range []string{"", "  ", "../README.md", "/etc/hosts", "missing.go", ".", "../app"} {
+		if path, err := h.core.ReviewFilePath(bad); err == nil {
+			t.Errorf("%q resolved to %q", bad, path)
+		}
+	}
+}

@@ -59,6 +59,8 @@ export function ReviewDir():Promise<string>;
 
 export function ReviewList(arg1:string):Promise<core.FolderListing>;
 
+export function ReviewOpen(arg1:string):Promise<void>;
+
 export function ReviewPreview(arg1:string):Promise<review.Preview>;
 
 export function SetUpdater(arg1:bridge.Updater):Promise<void>;
@@ -104,6 +106,8 @@ export function WindowFocus(arg1:boolean):Promise<void>;
 export function WorkspaceClose(arg1:number):Promise<void>;
 
 export function WorkspaceCreate(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
+export function WorkspaceCreateWithArgs(arg1:string,arg2:string,arg3:Array<string>,arg4:string):Promise<void>;
 
 export function WorkspaceMove(arg1:number,arg2:Array<string>):Promise<void>;
 

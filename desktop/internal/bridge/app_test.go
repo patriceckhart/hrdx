@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 
 type fakePlatform struct {
 	opened []string
+	files  []string
 	quits  int
 }
 
@@ -23,6 +26,7 @@ func (p *fakePlatform) PickDirectory() (string, error) { return "", nil }
 func (p *fakePlatform) ClipboardWrite(string) error    { return nil }
 func (p *fakePlatform) ClipboardRead() (string, error) { return "", nil }
 func (p *fakePlatform) OpenURL(url string)             { p.opened = append(p.opened, url) }
+func (p *fakePlatform) OpenFile(path string) error     { p.files = append(p.files, path); return nil }
 func (p *fakePlatform) Quit()                          { p.quits++ }
 func (p *fakePlatform) AttentionSupported() bool       { return false }
 func (p *fakePlatform) RequestAttention()              {}
@@ -134,5 +138,30 @@ func TestCompletePathNeverNil(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	if got := app.CompletePath("/definitely/missing/x"); got == nil {
 		t.Fatal("nil completions serialize as null")
+	}
+}
+
+func TestReviewOpenHandsOnlyPanelFilesToTheSystem(t *testing.T) {
+	app, _, platform := newTestApp(t)
+	dir, err := app.ReviewDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ReviewOpen("notes.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if len(platform.files) != 1 || platform.files[0] != filepath.Join(dir, "notes.txt") {
+		t.Fatalf("opened = %q", platform.files)
+	}
+	for _, bad := range []string{"../outside.txt", "/etc/hosts", "missing.txt", ""} {
+		if err := app.ReviewOpen(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	if len(platform.files) != 1 {
+		t.Fatalf("a refused path reached the system: %q", platform.files)
 	}
 }

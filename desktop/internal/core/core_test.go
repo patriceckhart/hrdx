@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/patriceckhart/hrdx/internal/layout"
@@ -431,4 +432,47 @@ func TestNavigateMovesActiveTab(t *testing.T) {
 			t.Fatalf("%s: order %s active %d, want %s/%d", step.action, got, active, step.order, step.active)
 		}
 	}
+}
+
+// Arguments entered in the New workspace dialog reach the first pane's
+// agent, are saved, and come back after a restart. Shells ignore them.
+func TestWorkspaceCreateWithArgs(t *testing.T) {
+	h := newHarness(t, state.State{})
+	dir := t.TempDir()
+	if err := h.core.WorkspaceCreateWithArgs(dir, "zot", nil, `--codemode --prompt "fix it"`); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--codemode", "--prompt", "fix it"}
+	h.waitFor("pane launched", func(m *model) bool { return m.spaces[0].tab().panes[0].running })
+	var spec LaunchSpec
+	var saved state.State
+	h.waitFor("inspect", func(m *model) bool {
+		spec = m.launchSpec(m.spaces[0], m.spaces[0].tab().panes[0])
+		saved = m.snapshot()
+		return true
+	})
+	for _, arg := range want {
+		if !slices.Contains(spec.Args, arg) {
+			t.Fatalf("launch args %q miss %q", spec.Args, arg)
+		}
+	}
+	if got := saved.Workspaces[0].Tabs[0].Panes[0].Args; !slices.Equal(got, want) {
+		t.Fatalf("saved args = %q", got)
+	}
+
+	restored := newHarness(t, saved)
+	restored.waitFor("restored", func(m *model) bool {
+		return slices.Equal(m.spaces[0].tab().panes[0].args, want)
+	})
+
+	if err := h.core.WorkspaceCreateWithArgs(t.TempDir(), "zot", nil, `--prompt "open`); err == nil {
+		t.Fatal("an unterminated quote should be rejected")
+	}
+	if err := h.core.WorkspaceCreateWithArgs(t.TempDir(), "shell", nil, "--codemode"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("shell without args", func(m *model) bool {
+		last := m.spaces[len(m.spaces)-1].tab().panes[0]
+		return last.kind == "shell" && len(last.args) == 0
+	})
 }

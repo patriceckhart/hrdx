@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
+	"runtime"
 	"sync"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -60,6 +63,31 @@ func (p *wailsPlatform) ClipboardRead() (string, error) {
 func (p *wailsPlatform) OpenURL(url string) {
 	if ctx := p.context(); ctx != nil {
 		wailsruntime.BrowserOpenURL(ctx, url)
+	}
+}
+
+// OpenFile hands path to the operating system's default application. The
+// path is passed as one argument, never through a shell.
+func (p *wailsPlatform) OpenFile(path string) error {
+	command := openFileCommand(runtime.GOOS, path)
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+	// Reap the helper so it does not linger as a zombie.
+	go func() { _ = command.Wait() }()
+	return nil
+}
+
+// openFileCommand builds the per-platform "open with default app" command.
+func openFileCommand(goos, path string) *exec.Cmd {
+	switch goos {
+	case "darwin":
+		return exec.Command("open", "--", path)
+	case "windows":
+		// rundll32 takes the path as data. "cmd /c start" would parse it.
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
+	default:
+		return exec.Command("xdg-open", path)
 	}
 }
 

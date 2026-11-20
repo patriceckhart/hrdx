@@ -42,8 +42,10 @@ func (m *model) launchSpec(owner *space, target *pane) LaunchSpec {
 		spec.Command = agent.BinaryFor(target.kind, m.config.AgentBins)
 		var extra []string
 		if target.kind == "zot" {
-			extra = m.config.ZotArgs
+			extra = append(extra, m.config.ZotArgs...)
 		}
+		// Arguments from workspace creation follow the command-line ones.
+		extra = append(extra, target.args...)
 		spec.Args = found.LaunchArgs(extra, target.resume)
 	}
 	return spec

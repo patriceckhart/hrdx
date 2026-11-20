@@ -53,7 +53,7 @@ func (m *Model) snapshot() state.State {
 				}
 				saved := state.Pane{
 					Kind: currentPane.kind, Name: currentPane.name, Session: currentPane.session,
-					CWD: currentPane.cwd,
+					CWD: currentPane.cwd, Args: append([]string(nil), currentPane.args...),
 				}
 				if currentPane.durable != nil {
 					ref := *currentPane.durable
@@ -115,6 +115,7 @@ func (m *Model) restore(saved state.State) {
 					resume:  isAgentKind(kind),
 					session: savedPane.Session,
 					cwd:     restoredPaneDir(savedPane.CWD),
+					args:    append([]string(nil), savedPane.Args...),
 				}
 				if ref := savedPane.Durable; ref != nil {
 					// A durable view relaunches by attaching to its exact

@@ -29,6 +29,11 @@ type Pane struct {
 	// workspace directory, e.g. a nested repository. Empty means the
 	// workspace directory.
 	CWD string `json:"cwd,omitempty"`
+
+	// Args are extra arguments for the pane's agent, entered when its
+	// workspace was created (for example --codemode). They are appended to
+	// the agent's own arguments on every launch. Shell panes ignore them.
+	Args []string `json:"args,omitempty"`
 }
 
 // DurableRef identifies one conversation on a continuous host. Profile names

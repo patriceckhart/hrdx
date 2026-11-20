@@ -73,6 +73,20 @@ func (c *Core) WorkspaceCreate(path, kind string, groupPath []string) error {
 	})
 }
 
+// WorkspaceCreateWithArgs opens a directory as a workspace and passes the
+// extra arguments in line (split like shell words, for example
+// "--codemode --model x") to the first pane's agent.
+func (c *Core) WorkspaceCreateWithArgs(path, kind string, groupPath []string, line string) error {
+	args, err := agent.SplitArgs(line)
+	if err != nil {
+		return err
+	}
+	return c.do(func() error {
+		_, err := c.m.createWorkspaceArgs(path, kind, groupPath, false, args)
+		return err
+	})
+}
+
 // WorkspaceSelect selects a workspace by index.
 func (c *Core) WorkspaceSelect(index int) error {
 	return c.do(func() error {

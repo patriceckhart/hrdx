@@ -44,9 +44,10 @@ type pane struct {
 	id      int
 	name    string
 	kind    string
-	cwd     string // start directory when it differs from the workspace
-	session int64  // holder session id, 0 when not holder-backed
-	resume  bool   // relaunch with the agent's resume arguments
+	cwd     string   // start directory when it differs from the workspace
+	args    []string // extra agent arguments entered at workspace creation
+	session int64    // holder session id, 0 when not holder-backed
+	resume  bool     // relaunch with the agent's resume arguments
 
 	term     Terminal
 	running  bool

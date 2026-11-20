@@ -53,7 +53,8 @@ const (
 	modeFind
 	modePluginView
 	modeDurablePrompt
-	modeReview // keyboard browses the Files or Changes panel
+	modeReview    // keyboard browses the Files or Changes panel
+	modeSpaceArgs // optional agent arguments for a new workspace
 )
 
 // menuItem is one entry of the right-click context menu.
@@ -117,7 +118,8 @@ type pane struct {
 	// verified on the host in this process.
 	durable      *state.DurableRef
 	durableReady bool
-	cwd          string // start directory when not the workspace's, e.g. a sub-repository
+	cwd          string   // start directory when not the workspace's, e.g. a sub-repository
+	args         []string // extra agent arguments entered at workspace creation
 }
 
 // tab is one tabbed layout of panes inside a workspace.
@@ -184,6 +186,8 @@ type Model struct {
 	pickAction    string             // "space", "tab", "split-right", "split-down", "settings"
 	pickSpace     *space             // tab target for the picker
 	pickPath      string             // directory for a pending new workspace
+	argsPath      string             // directory of the workspace awaiting arguments
+	argsKind      string             // agent chosen for that workspace
 	renamePane    *pane
 	renameTab     *tab
 	renameSpace   *space
@@ -740,11 +744,7 @@ func (m Model) startPTY(owner *space, target *pane) tea.Cmd {
 		command, args = durableCommand, durableArgs
 	} else if spec := agentByKind(target.kind); spec != nil {
 		command = m.config.binaryFor(target.kind)
-		var extra []string
-		if target.kind == "zot" {
-			extra = m.config.ZotArgs
-		}
-		args = spec.LaunchArgs(extra, target.resume)
+		args = spec.LaunchArgs(m.extraAgentArgs(target), target.resume)
 	}
 	cwd := owner.cwd
 	if target.cwd != "" {
@@ -765,6 +765,17 @@ func (m Model) startPTY(owner *space, target *pane) tea.Cmd {
 		started, err := term.Start(command, args, cwd, cols, rows)
 		return paneStartedMsg{id: id, term: started, err: err}
 	}
+}
+
+// extraAgentArgs are the arguments added to an agent pane's own: the zot
+// flags from the command line, then the pane's arguments from workspace
+// creation.
+func (m Model) extraAgentArgs(target *pane) []string {
+	var extra []string
+	if target.kind == "zot" {
+		extra = append(extra, m.config.ZotArgs...)
+	}
+	return append(extra, target.args...)
 }
 
 // shellArgsFor returns the default arguments for an interactive shell.
@@ -1128,7 +1139,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateRaw(raw)
 	}
 
-	if m.mode == modeNewSpace {
+	if m.mode == modeNewSpace || m.mode == modeSpaceArgs {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(message)
 		return m, cmd
@@ -1226,6 +1237,8 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updatePluginViewKey(msg)
 	case modeDurablePrompt:
 		return m.updateDurablePromptKey(msg)
+	case modeSpaceArgs:
+		return m.updateSpaceArgsKey(msg)
 	case modeRename:
 		switch msg.String() {
 		case "esc":
@@ -1753,10 +1766,11 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 	}
 	switch action {
 	case "space":
-		newSpace := m.addSpaceKind(path, kind)
-		m.selected = len(m.spaces) - 1
-		m.persist()
-		return m, m.startPane(newSpace, newSpace.tab().panes[0])
+		// Agents take optional extra arguments. Shells start right away.
+		if agentByKind(kind) != nil {
+			return m.openSpaceArgsInput(path, kind)
+		}
+		return m.createSpace(path, kind, nil)
 	case "tab":
 		if target == nil {
 			target = m.currentSpace()
@@ -1785,6 +1799,56 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 		return m.openInSubrepo(target, path, kind, strings.TrimPrefix(action, "subrepo-"))
 	}
 	return m, nil
+}
+
+// createSpace opens path as a workspace whose first pane runs kind with
+// the given extra agent arguments.
+func (m Model) createSpace(path, kind string, args []string) (tea.Model, tea.Cmd) {
+	newSpace := m.addSpaceKind(path, kind)
+	first := newSpace.tab().panes[0]
+	first.args = args
+	m.selected = len(m.spaces) - 1
+	m.persist()
+	return m, m.startPane(newSpace, first)
+}
+
+// openSpaceArgsInput asks for optional arguments for the agent of a new
+// workspace. Enter on an empty line starts the agent without any.
+func (m Model) openSpaceArgsInput(path, kind string) (tea.Model, tea.Cmd) {
+	m.mode = modeSpaceArgs
+	m.argsPath, m.argsKind = path, kind
+	m.status = ""
+	m.input.Placeholder = kind + " arguments, e.g. --codemode (enter to skip)"
+	m.input.SetValue("")
+	m.input.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) updateSpaceArgsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Cancels the whole workspace, like esc at the directory prompt.
+		m.mode = modeTerminal
+		m.argsPath, m.argsKind = "", ""
+		m.input.Blur()
+		m.input.SetValue("")
+		return m, nil
+	case "enter":
+		args, err := agent.SplitArgs(m.input.Value())
+		if err != nil {
+			return m, m.flashStatus(err.Error())
+		}
+		path, kind := m.argsPath, m.argsKind
+		m.mode = modeTerminal
+		m.argsPath, m.argsKind = "", ""
+		m.input.Blur()
+		m.input.SetValue("")
+		m.status = ""
+		return m.createSpace(path, kind, args)
+	}
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
 }
 
 func (m Model) openInSubrepo(target *space, path, kind, where string) (tea.Model, tea.Cmd) {
@@ -2870,7 +2934,7 @@ func (m Model) publishCursor() {
 			m.cursorSink.Set(screenX, screenY, true)
 			return
 		}
-	case modeNewSpace, modeRename, modeDurablePrompt:
+	case modeNewSpace, modeSpaceArgs, modeRename, modeDurablePrompt:
 		badge := " NEW WORKSPACE "
 		if m.mode == modeRename {
 			badge = " RENAME "
@@ -3289,6 +3353,9 @@ func (m Model) renderFooter() string {
 			}
 			body += styleBarMuted.Render("  ") + strings.Join(hints, styleBarMuted.Render("  "))
 		}
+	case modeSpaceArgs:
+		badge = styleBadgeInput.Render(" NEW WORKSPACE ")
+		body = m.renderPromptInput()
 	case modeRename:
 		badge = styleBadgeInput.Render(" RENAME ")
 		body = m.renderPromptInput()

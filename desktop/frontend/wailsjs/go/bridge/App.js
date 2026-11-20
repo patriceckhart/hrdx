@@ -110,6 +110,10 @@ export function ReviewList(arg1) {
   return window['go']['bridge']['App']['ReviewList'](arg1);
 }
 
+export function ReviewOpen(arg1) {
+  return window['go']['bridge']['App']['ReviewOpen'](arg1);
+}
+
 export function ReviewPreview(arg1) {
   return window['go']['bridge']['App']['ReviewPreview'](arg1);
 }
@@ -200,6 +204,10 @@ export function WorkspaceClose(arg1) {
 
 export function WorkspaceCreate(arg1, arg2, arg3) {
   return window['go']['bridge']['App']['WorkspaceCreate'](arg1, arg2, arg3);
+}
+
+export function WorkspaceCreateWithArgs(arg1, arg2, arg3, arg4) {
+  return window['go']['bridge']['App']['WorkspaceCreateWithArgs'](arg1, arg2, arg3, arg4);
 }
 
 export function WorkspaceMove(arg1, arg2) {
