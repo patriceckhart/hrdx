@@ -4,7 +4,7 @@ Status: design specification, implemented. The user-facing behavior is documente
 
 ## 1. Product goal
 
-Make zot continuous a first-class, built-in execution backend in hrdx while preserving hrdx's current role as a minimal terminal multiplexer for ordinary agents and shells.
+Make zot continuous a first-class, built-in execution backend in hrdx while preserving hrdx's current role as a minimal agent workbench for ordinary agents and shells.
 
 Users can mix ordinary agents, durable zot conversations, and shells in the same workspace, tab, and split layout. Durable execution is optional. Installing or running zot continuous is never required for existing hrdx workflows.
 

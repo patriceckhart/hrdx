@@ -4,7 +4,7 @@ This file defines how automated coding assistants should work in this repository
 
 ## Product intent
 
-hrdx is an experimental, minimal, lightweight terminal multiplexer for coding agents and shells. Changes should preserve its defining properties:
+hrdx is an experimental, minimal, lightweight agent workbench for coding agents and shells. Changes should preserve its defining properties:
 
 - one portable Go binary
 - every pane backed by a real PTY

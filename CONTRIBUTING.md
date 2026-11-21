@@ -37,7 +37,7 @@ Focused typo, documentation, and test improvements can usually go directly to a 
 
 ## Design boundaries
 
-hrdx is intended to remain an experimental, minimal, lightweight terminal multiplexer distributed as one portable binary. Changes should preserve:
+hrdx is intended to remain an experimental, minimal, lightweight agent workbench distributed as one portable binary. Changes should preserve:
 
 - real PTYs rather than agent-specific wrappers
 - a compact dependency and operational footprint
